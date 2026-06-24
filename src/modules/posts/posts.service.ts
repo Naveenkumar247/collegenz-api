@@ -7,6 +7,20 @@ import { Post, PostDocument } from './schema/post.schema';
 export class PostsService {
   constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
+  // 🟢 1. The Missing Create Method needed by your Controller
+  async create(caption: string, imageUrl: string, userId: string, name: string) {
+    return this.postModel.create({
+      caption,
+      image: imageUrl,
+      user: new Types.ObjectId(userId),
+      authorName: name,
+      likes: [],
+      type: 'recent',
+      createdAt: new Date(),
+    });
+  }
+
+  // 🟢 2. Your Bulletproof Permissive Feed Fetcher
   async getFeed(type: string, currentUserId: string, page: number = 1) {
     const limit = 10;
     const skip = (page - 1) * limit;
@@ -24,7 +38,7 @@ export class PostsService {
       {
         $lookup: {
           from: 'users',
-          localField: 'user', // Tries standard relation
+          localField: 'user',
           foreignField: '_id',
           as: 'authorDetails',
         },
@@ -33,15 +47,12 @@ export class PostsService {
       {
         $project: {
           _id: 1,
-          // 🟢 Bulletproof fallbacks: use 'caption' or fallback to 'text' / 'title' fields if named differently
           caption: { $ifNull: ['$caption', '$text', '$title', ''] },
-          // 🟢 Support both 'image' and 'imageUrl' formats
           image: { $ifNull: ['$image', '$imageUrl', ''] },
           type: { $ifNull: ['$type', 'recent'] },
           createdAt: { $ifNull: ['$createdAt', new Date()] },
           likesCount: { $size: { $ifNull: ['$likes', []] } },
           author: {
-            // 🟢 If user schema relation is missing, fallback to raw string names recorded in doc
             username: { $ifNull: ['$authorDetails.username', '$authorName', '$username', 'Anonymous Student'] },
             picture: { $ifNull: ['$authorDetails.picture', '$profilePic', 'https://www.svgrepo.com/show/532362/user.svg'] },
           },
