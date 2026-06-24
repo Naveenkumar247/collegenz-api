@@ -4,7 +4,6 @@ import { AppModule } from './app.module';
 import helmet from 'helmet';
 import * as compression from 'compression';
 
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -38,8 +37,9 @@ async function bootstrap() {
   );
 
   const port = process.env.PORT || 3000;
-  await app.listen(port);
-  console.log(`🚀 CollegenZ API core running on: http://localhost:${port}/api/v1`);
+  
+  // 🟢 FIXED: Added '0.0.0.0' to bind the network listener across the container threshold
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 CollegenZ API core running on: http://0.0.0.0:${port}/api/v1`);
 }
 bootstrap();
-
