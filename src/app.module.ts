@@ -8,7 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 // Core Feature Module Imports
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { PostsModule } from './modules/posts/posts.module'; // Added Social Feed Module
+import { PostsModule } from './modules/posts/posts.module';
 
 @Controller('')
 class AppController {
@@ -46,6 +46,8 @@ class AppController {
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('MONGO_URI'),
+        // 🟢 FIXED: Explicitly target the 'test' database holding your posts data table
+        dbName: 'test', 
       }),
     }),
 
@@ -58,7 +60,7 @@ class AppController {
     // 5. Registered Active Business Domain Modules
     UsersModule,
     AuthModule,
-    PostsModule, // Registered to awaken feed controllers
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [
