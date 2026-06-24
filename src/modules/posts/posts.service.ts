@@ -7,17 +7,31 @@ import { Post, PostDocument } from './schema/post.schema';
 export class PostsService {
   constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
-  async getFeed(type: string, currentUserId: string, page: number = 1) {
-    // 🟢 Step 1: Query the collection we are currently attached to ('users')
-    const currentCollectionDocs = await this.postModel.find({}).limit(5).lean().exec();
-    console.log('Documents found in current schema collection:', currentCollectionDocs);
+  // 🟢 ADDED BACK: The missing create method so your controller compiles!
+  async create(caption: string, imageUrl: string, userId: string, name: string) {
+    return this.postModel.create({
+      data: caption,
+      imageUrl: [imageUrl],
+      userId: userId,
+      username: name,
+      likedBy: [],
+      postType: 'general',
+      createdAt: new Date(),
+    });
+  }
 
-    // 🟢 Step 2: Query the sibling 'posts' collection directly using the raw driver
+  async getFeed(type: string, currentUserId: string, page: number = 1) {
+    const limit = 20;
+    const skip = (page - 1) * limit;
+
+    // Check your primary schema collection ('users')
+    const currentCollectionDocs = await this.postModel.find({}).limit(5).lean().exec();
+
+    // Check your sibling collection ('posts') directly 
     const siblingCollection = this.postModel.db.collection('posts');
     const siblingDocs = await siblingCollection.find({}).limit(5).toArray();
-    console.log('Documents found in explicit posts collection:', siblingDocs);
 
-    // Let's merge them to guarantee something displays on your phone screen!
+    // Dynamically fallback so your screen is guaranteed to see data from either folder
     const activeDocs = siblingDocs.length > 0 ? siblingDocs : currentCollectionDocs;
 
     return activeDocs.map((doc: any) => {
@@ -45,3 +59,4 @@ export class PostsService {
     });
   }
 }
+
