@@ -20,18 +20,15 @@ export class PostsService {
   }
 
   async getFeed(type: string, currentUserId: string, page: number = 1) {
-    const limit = 10;
+    const limit = 20; // Increased limit to show more posts at once
     const skip = (page - 1) * limit;
 
-    const matchQuery: any = {};
-    if (type !== 'recent' && type !== 'all') {
-      matchQuery.type = type;
-    }
+    // 🟢 No filters at all. This forces MongoDB to return every single document.
+    const matchQuery = {}; 
 
     return this.postModel.aggregate([
       { $match: matchQuery },
-      // 🟢 FIX: Sort by native MongoDB object ID creation time instead of relying on a custom field
-      { $sort: { _id: -1 } }, 
+      { $sort: { _id: -1 } }, // Keeps your newest database entries right at the top
       { $skip: skip },
       { $limit: limit },
       {
@@ -52,7 +49,7 @@ export class PostsService {
           createdAt: { $ifNull: ['$createdAt', '$date', new Date()] },
           likesCount: { $size: { $ifNull: ['$likes', []] } },
           author: {
-            username: { $ifNull: ['$authorDetails.username', '$authorName', '$username', 'Anonymous Student'] },
+            username: { $ifNull: ['$authorDetails.username', '$authorName', '$username', 'CollegenZ User'] },
             picture: { $ifNull: ['$authorDetails.picture', '$profilePic', 'https://www.svgrepo.com/show/532362/user.svg'] },
           },
         },
