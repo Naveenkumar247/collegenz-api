@@ -46,10 +46,10 @@ class AppController {
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('MONGO_URI'),
-        // 🟢 FIXED: Explicitly target the 'test' database holding your posts data table
-        dbName: 'test', 
+        // 🟢 Cleaned up: Let the direct URI string handle the namespace routing entirely
       }),
     }),
+    
 
     // 4. Global Security Rate Limiting API Safeguard
     ThrottlerModule.forRoot([{
