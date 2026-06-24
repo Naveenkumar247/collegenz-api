@@ -23,47 +23,41 @@ export class PostsService {
     const limit = 20;
     const skip = (page - 1) * limit;
 
-    return this.postModel.aggregate([
-      // 1. Grab everything from the collection sorted by newest first
-      { $sort: { _id: -1 } },
-      { $skip: skip },
-      { $limit: limit },
+    // We use a raw lean find map query here instead of complex aggregates.
+    // This stops MongoDB from failing if field types (like arrays/strings) don't match perfectly.
+    const rawDocs = await this.postModel
+      .find({})
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+      .exec();
+
+    // Safely transform your historical MongoDB format right into what your frontend needs
+    return rawDocs.map((doc: any) => {
+      let resolvedImage = '';
       
-      // 2. Map your exact MongoDB fields right into what your frontend layout expects
-      {
-        $project: {
-          _id: 1,
-          // Extract string from 'data' field
-          caption: { $ifNull: ['$data', ''] },
-          
-          // Since imageUrl is an Array in your screenshot, grab the first element safely
-          image: { 
-            $cond: {
-              if: { $and: [{ $isArray: '$imageUrl' }, { $gt: [{ $size: '$imageUrl' }, 0] }] },
-              then: { $arrayElemAt: ['$imageUrl', 0] },
-              else: ''
-            }
-          },
-          
-          type: { $ifNull: ['$postType', 'recent'] },
-          createdAt: { $ifNull: ['$createdAt', new Date()] },
-          
-          // Count your exact 'likedBy' array safely
-          likesCount: {
-            $cond: {
-              if: { $isArray: '$likedBy' },
-              then: { $size: '$likedBy' },
-              else: 0
-            }
-          },
-          
-          // Construct the author details using your stored username and picture fields
-          author: {
-            username: { $ifNull: ['$username', 'CollegenZ User'] },
-            picture: { $ifNull: ['$picture', 'https://www.svgrepo.com/show/532362/user.svg'] },
-          },
+      // 🟢 Fix the Array vs String issue safely on the fly
+      if (Array.isArray(doc.imageUrl) && doc.imageUrl.length > 0) {
+        resolvedImage = doc.imageUrl[0];
+      } else if (typeof doc.imageUrl === 'string') {
+        resolvedImage = doc.imageUrl;
+      } else if (doc.image) {
+        resolvedImage = doc.image;
+      }
+
+      return {
+        _id: doc._id,
+        caption: doc.data || doc.caption || doc.text || '',
+        image: resolvedImage,
+        type: doc.postType || doc.type || 'recent',
+        createdAt: doc.createdAt || new Date(),
+        likesCount: Array.isArray(doc.likedBy) ? doc.likedBy.length : 0,
+        author: {
+          username: doc.username || doc.authorName || 'CollegenZ User',
+          picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
         },
-      },
-    ]);
+      };
+    });
   }
 }
