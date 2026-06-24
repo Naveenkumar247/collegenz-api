@@ -44,6 +44,13 @@ export class PostsController {
     }
   }
 
+  // Add this method inside your existing PostsController class
+@Get('featured')
+async getFeaturedPosts() {
+  return this.postsService.getFeatured();
+}
+  
+
   @Get('feed')
   async getFeed(@Query('type') type: string, @Query('page') page: string, @Req() req: any) {
     const pageNum = parseInt(page, 10) || 1;
