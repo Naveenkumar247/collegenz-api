@@ -3,10 +3,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
 
-// 1. IMPORT YOUR FEATURE MODULES HERE
+// Core Feature Module Imports
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { PostsModule } from './modules/posts/posts.module'; // Added Social Feed Module
 
 @Controller('')
 class AppController {
@@ -22,9 +24,23 @@ class AppController {
 
 @Module({
   imports: [
+    // 1. Global Environment Variables Configuration
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+
+    // 2. Global Shared JWT Configuration (Ensures Guards can verify tokens anywhere)
+    JwtModule.registerAsync({
+      global: true,
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '1d' },
+      }),
+    }),
+
+    // 3. Database Connection Pool Setup
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -32,14 +48,17 @@ class AppController {
         uri: configService.get<string>('MONGO_URI'),
       }),
     }),
+
+    // 4. Global Security Rate Limiting API Safeguard
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
     }]),
 
-    // 2. REGISTER THEM HERE SO NESTJS WAKES UP THEIR CONTROLLERS
+    // 5. Registered Active Business Domain Modules
     UsersModule,
     AuthModule,
+    PostsModule, // Registered to awaken feed controllers
   ],
   controllers: [AppController],
   providers: [
