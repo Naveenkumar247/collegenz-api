@@ -7,8 +7,13 @@ import * as compression from 'compression';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Security Headers
-  app.use(helmet());
+  // 1. Security Headers (🟢 FIXED: Modified cross-origin policies to stop blocking Vercel)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginOpenerPolicy: { policy: 'unsafe-none' },
+    }),
+  );
 
   // 2. Global CORS Configuration (Optimized for React Client requests)
   app.enableCors({
@@ -38,7 +43,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   
-  // 🟢 FIXED: Added '0.0.0.0' to bind the network listener across the container threshold
+  // Bind the network listener across the container threshold
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 CollegenZ API core running on: http://0.0.0.0:${port}/api/v1`);
 }
