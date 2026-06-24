@@ -7,9 +7,10 @@ import { ConfigService } from '@nestjs/config';
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(configService: ConfigService) {
     super({
-      clientID: configService.get<string>('GOOGLE_CLIENT_ID'),
-      clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET'),
-      callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL'),
+      // Adding explicit fallback string options prevents Passport initialization crashes
+      clientID: configService.get<string>('GOOGLE_CLIENT_ID') || 'TEMP_HOLDER_ID',
+      clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET') || 'TEMP_HOLDER_SECRET',
+      callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL') || 'http://localhost:5000/api/v1/auth/google/callback',
       scope: ['email', 'profile'],
     });
   }
