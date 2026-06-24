@@ -9,48 +9,58 @@ export class PostsService {
 
   async create(caption: string, imageUrl: string, userId: string, name: string) {
     return this.postModel.create({
-      caption,
-      image: imageUrl,
-      user: new Types.ObjectId(userId),
-      authorName: name,
-      likes: [],
-      type: 'recent',
+      data: caption,
+      imageUrl: [imageUrl],
+      userId: userId,
+      username: name,
+      likedBy: [],
+      postType: 'general',
       createdAt: new Date(),
     });
   }
 
   async getFeed(type: string, currentUserId: string, page: number = 1) {
-    const limit = 20; // Increased limit to show more posts at once
+    const limit = 20;
     const skip = (page - 1) * limit;
 
-    // 🟢 No filters at all. This forces MongoDB to return every single document.
-    const matchQuery = {}; 
-
     return this.postModel.aggregate([
-      { $match: matchQuery },
-      { $sort: { _id: -1 } }, // Keeps your newest database entries right at the top
+      // 1. Grab everything from the collection sorted by newest first
+      { $sort: { _id: -1 } },
       { $skip: skip },
       { $limit: limit },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user',
-          foreignField: '_id',
-          as: 'authorDetails',
-        },
-      },
-      { $unwind: { path: '$authorDetails', preserveNullAndEmptyArrays: true } },
+      
+      // 2. Map your exact MongoDB fields right into what your frontend layout expects
       {
         $project: {
           _id: 1,
-          caption: { $ifNull: ['$caption', '$text', '$title', ''] },
-          image: { $ifNull: ['$image', '$imageUrl', ''] },
-          type: { $ifNull: ['$type', 'recent'] },
-          createdAt: { $ifNull: ['$createdAt', '$date', new Date()] },
-          likesCount: { $size: { $ifNull: ['$likes', []] } },
+          // Extract string from 'data' field
+          caption: { $ifNull: ['$data', ''] },
+          
+          // Since imageUrl is an Array in your screenshot, grab the first element safely
+          image: { 
+            $cond: {
+              if: { $and: [{ $isArray: '$imageUrl' }, { $gt: [{ $size: '$imageUrl' }, 0] }] },
+              then: { $arrayElemAt: ['$imageUrl', 0] },
+              else: ''
+            }
+          },
+          
+          type: { $ifNull: ['$postType', 'recent'] },
+          createdAt: { $ifNull: ['$createdAt', new Date()] },
+          
+          // Count your exact 'likedBy' array safely
+          likesCount: {
+            $cond: {
+              if: { $isArray: '$likedBy' },
+              then: { $size: '$likedBy' },
+              else: 0
+            }
+          },
+          
+          // Construct the author details using your stored username and picture fields
           author: {
-            username: { $ifNull: ['$authorDetails.username', '$authorName', '$username', 'CollegenZ User'] },
-            picture: { $ifNull: ['$authorDetails.picture', '$profilePic', 'https://www.svgrepo.com/show/532362/user.svg'] },
+            username: { $ifNull: ['$username', 'CollegenZ User'] },
+            picture: { $ifNull: ['$picture', 'https://www.svgrepo.com/show/532362/user.svg'] },
           },
         },
       },
