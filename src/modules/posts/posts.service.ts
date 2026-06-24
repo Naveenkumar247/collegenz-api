@@ -7,7 +7,6 @@ import { Post, PostDocument } from './schema/post.schema';
 export class PostsService {
   constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
-  // 🟢 ADDED BACK: The missing create method so your controller compiles!
   async create(caption: string, imageUrl: string, userId: string, name: string) {
     return this.postModel.create({
       data: caption,
@@ -24,39 +23,35 @@ export class PostsService {
     const limit = 20;
     const skip = (page - 1) * limit;
 
-    // Check your primary schema collection ('users')
-    const currentCollectionDocs = await this.postModel.find({}).limit(5).lean().exec();
+    // 🟢 Fetch raw documents from the collection without model processing restrictions
+    const rawDocs = await this.postModel
+      .find({})
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean()
+      .exec();
 
-    // Check your sibling collection ('posts') directly 
-    const siblingCollection = this.postModel.db.collection('posts');
-    const siblingDocs = await siblingCollection.find({}).limit(5).toArray();
-
-    // Dynamically fallback so your screen is guaranteed to see data from either folder
-    const activeDocs = siblingDocs.length > 0 ? siblingDocs : currentCollectionDocs;
-
-    return activeDocs.map((doc: any) => {
+    return rawDocs.map((doc: any) => {
       let resolvedImage = '';
       if (Array.isArray(doc.imageUrl) && doc.imageUrl.length > 0) {
         resolvedImage = doc.imageUrl[0];
       } else if (typeof doc.imageUrl === 'string') {
         resolvedImage = doc.imageUrl;
-      } else if (doc.image) {
-        resolvedImage = doc.image;
       }
 
       return {
         _id: doc._id,
-        caption: doc.data || doc.caption || doc.text || 'Untitled Post Data Structure',
+        caption: doc.data || '',
         image: resolvedImage,
-        type: doc.postType || doc.type || 'recent',
+        type: doc.postType || 'recent',
         createdAt: doc.createdAt || new Date(),
         likesCount: Array.isArray(doc.likedBy) ? doc.likedBy.length : 0,
         author: {
-          username: doc.username || doc.authorName || 'CollegenZ User',
+          username: doc.username || 'CollegenZ User',
           picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
         },
       };
     });
   }
 }
-
