@@ -49,45 +49,31 @@ export class AuthService {
     return this.generateUserToken(user);
   }
 
-  async validateOrCreateGoogleUser(googleProfile: any) {
-    const { email, name, picture } = googleProfile;
-    
+  /**
+   * Validates an existing Google user or seamlessly spins up a new account 
+   * directly using the unified database model pool.
+   */
+  async validateGoogleUser(googleProfile: any) {
+    // Gracefully handle both strategy profile payloads structures
+    const email = googleProfile.email || googleProfile.emails?.[0]?.value;
+    const name = googleProfile.name || `${googleProfile.firstName || ''} ${googleProfile.lastName || ''}`.trim();
+    const picture = googleProfile.picture || googleProfile.photos?.[0]?.value;
+
     let user = await this.userModel.findOne({ email });
+    
     if (!user) {
       user = await this.userModel.create({
-        name,
+        name: name || email.split('@')[0],
         email,
         picture,
         googleUser: true,
-        username: email.split('@')[0] + Math.floor(Math.random() * 1000),
+        isVerified: true, // Google emails are pre-verified
+        username: email.split('@')[0] + Math.floor(Math.random() * 9000 + 1000),
       });
     }
 
     return this.generateUserToken(user);
   }
-
-  // Add this method inside your existing AuthService class:
-async validateGoogleUser(googleUser: any) {
-  // Check if user already exists in MongoDB
-  let user = await this.usersService.findByEmail(googleUser.email);
-
-  if (!user) {
-    // If not found, register them automatically
-    user = await this.usersService.create({
-      email: googleUser.email,
-      username: `${googleUser.firstName.toLowerCase()}${Math.floor(1000 + Math.random() * 9000)}`,
-      picture: googleUser.picture,
-      isVerified: true, // Google emails are already pre-verified
-    });
-  }
-
-  // Generate your system JWT login token payload
-  const payload = { sub: user._id, email: user.email };
-  return {
-    accessToken: this.jwtService.sign(payload),
-  };
-}
-  
 
   private generateUserToken(user: UserDocument) {
     const payload = { sub: user._id, email: user.email, zrole: user.zrole };
