@@ -3,25 +3,28 @@ import { Document, Types } from 'mongoose';
 
 export type PostDocument = Post & Document;
 
-@Schema({ timestamps: true }) // Automatically manages createdAt and updatedAt tracking fields
+// 🟢 FORCE NESTJS TO MAP DIRECTLY TO YOUR 'users' COLLECTION
+@Schema({ collection: 'users', timestamps: true }) 
 export class Post {
-  @Prop({ required: true })
+  // 🟢 Map your legacy database 'data' field directly to 'caption'
+  @Prop({ name: 'data', required: true })
   caption: string;
 
-  @Prop({ default: '' })
-  image: string; // Stores your Cloudinary image asset URL string cleanly
+  // 🟢 Map your legacy array 'imageUrl' field safely
+  @Prop({ type: [String], name: 'imageUrl', default: [] })
+  image: string[];
 
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
-  user: Types.ObjectId; // References the MongoDB User document ID who created it
+  @Prop({ type: Types.ObjectId, name: 'userId', required: true })
+  user: Types.ObjectId;
 
-  @Prop({ required: true })
-  authorName: string; // Safe backup placeholder name string for optimization
+  @Prop({ required: true, name: 'username' })
+  authorName: string;
 
-  @Prop({ type: [Types.ObjectId], ref: 'User', default: [] })
-  likes: Types.ObjectId[]; // Array list tracking student accounts who liked the post
+  @Prop({ type: Array, default: [] })
+  likedBy: any[];
 
-  @Prop({ default: 'recent' })
-  type: string; // Keeps tabs aligned ('recent', 'event', 'hiring')
+  @Prop({ default: 'general', name: 'postType' })
+  type: string;
 }
 
 export const PostSchema = SchemaFactory.createForClass(Post);
