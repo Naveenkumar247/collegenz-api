@@ -1,30 +1,27 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export type PostDocument = Post & Document;
 
-// 🟢 FORCE NESTJS TO MAP DIRECTLY TO YOUR 'users' COLLECTION
-@Schema({ collection: 'users', timestamps: true }) 
+@Schema({ collection: 'users', strict: false }) // 🟢 strict: false prevents Mongoose from dropping fields
 export class Post {
-  // 🟢 Map your legacy database 'data' field directly to 'caption'
-  @Prop({ name: 'data', required: true })
-  caption: string;
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  data: any;
 
-  // 🟢 Map your legacy array 'imageUrl' field safely
-  @Prop({ type: [String], name: 'imageUrl', default: [] })
-  image: string[];
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  imageUrl: any;
 
-  @Prop({ type: Types.ObjectId, name: 'userId', required: true })
-  user: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  userId: any;
 
-  @Prop({ required: true, name: 'username' })
-  authorName: string;
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  username: any;
 
-  @Prop({ type: Array, default: [] })
-  likedBy: any[];
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  likedBy: any;
 
-  @Prop({ default: 'general', name: 'postType' })
-  type: string;
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  postType: any;
 }
 
 export const PostSchema = SchemaFactory.createForClass(Post);
