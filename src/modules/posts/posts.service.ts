@@ -1,101 +1,67 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Post, PostDocument } from '../users/schemas/post.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { CreatePostDto } from './dto/create-post.dto';
+import { Post, PostDocument } from './schemas/post.schema';
 
 @Injectable()
 export class PostsService {
-  constructor(
-    @InjectModel(Post.name) private postModel: Model<PostDocument>,
-    @InjectModel(User.name) private userModel: Model<UserDocument>,
-  ) {}
+  constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
-  async create(createPostDto: CreatePostDto, userId: string, email: string) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('User profile not discovered');
-
-    const newPost = await this.postModel.create({
-      ...createPostDto,
-      userId: new Types.ObjectId(userId),
-      username: user.username,
-      userEmail: email,
-      picture: user.picture,
-      college: user.college,
+  // 1. Create a brand new post mapping the Cloudinary image URL
+  async create(caption: string, imageUrl: string, userId: string, name: string) {
+    return this.postModel.create({
+      caption,
+      image: imageUrl,
+      user: new Types.ObjectId(userId),
+      authorName: name,
+      likes: [],
+      type: 'recent',
+      createdAt: new Date(),
     });
-
-    // Increment user post statistics tracker
-    await this.userModel.findByIdAndUpdate(userId, { $inc: { postCount: 1 } });
-    return newPost;
   }
 
-  async getFeed(type: string, userId: string, page = 1, limit = 10) {
+  // 2. Extract feed data matching your UI with joined MongoDB user profile pictures
+  async getFeed(type: string, currentUserId: string, page: number = 1) {
+    const limit = 10;
     const skip = (page - 1) * limit;
-    const matchQuery: any = { status: 'APPROVED' };
 
-    if (type && type !== 'recent') {
-      matchQuery.postType = type;
+    const matchQuery: any = {};
+    if (type !== 'recent' && type !== 'all') {
+      matchQuery.type = type;
     }
 
-    const currentUserId = new Types.ObjectId(userId);
-
-    // Optimized Multi-Stage MongoDB Aggregation Pipeline
     return this.postModel.aggregate([
       { $match: matchQuery },
       { $sort: { createdAt: -1 } },
       { $skip: skip },
       { $limit: limit },
+      // Join with the users collection to extract current user profiles details dynamically
       {
-        $addFields: {
-          hasLiked: { $in: [currentUserId, { $ifNull: ['$likedBy', []] }] },
-          hasSaved: { $in: [currentUserId, { $ifNull: ['$savedBy', []] }] },
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'authorDetails',
         },
       },
+      { $unwind: { path: '$authorDetails', preserveNullAndEmptyArrays: true } },
       {
         $project: {
-          likedBy: 0,
-          savedBy: 0,
-          sharedBy: 0,
+          _id: 1,
+          caption: 1,
+          image: 1,
+          type: 1,
+          createdAt: 1,
+          likesCount: { $size: { $ifNull: ['$likes', []] } },
+          hasLiked: {
+            $in: [new Types.ObjectId(currentUserId), { $ifNull: ['$likes', []] }],
+          },
+          author: {
+            username: { $ifNull: ['$authorDetails.username', '$authorName'] },
+            picture: { $ifNull: ['$authorDetails.picture', 'https://www.svgrepo.com/show/532362/user.svg'] },
+          },
         },
       },
     ]);
-  }
-
-  async toggleLike(postId: string, userId: string) {
-    const post = await this.postModel.findById(postId);
-    if (!post) throw new NotFoundException('Target post not found');
-
-    const uId = new Types.ObjectId(userId);
-    const hasLiked = post.likedBy.some(id => id.equals(uId));
-
-    if (hasLiked) {
-      // Unlike post action
-      await this.postModel.findByIdAndUpdate(postId, {
-        $pull: { likedBy: uId },
-        $inc: { likes: -1 },
-      });
-      await this.userModel.findByIdAndUpdate(post.userId, { $inc: { totalLikes: -1 } });
-      return { liked: false };
-    } else {
-      // Like post action
-      await this.postModel.findByIdAndUpdate(postId, {
-        $addToSet: { likedBy: uId },
-        $inc: { likes: 1 },
-      });
-      await this.userModel.findByIdAndUpdate(post.userId, { $inc: { totalLikes: 1 } });
-      return { liked: true };
-    }
-  }
-
-  async delete(postId: string, userId: string) {
-    const post = await this.postModel.findOneAndDelete({
-      _id: new Types.ObjectId(postId),
-      userId: new Types.ObjectId(userId),
-    });
-    if (!post) throw new NotFoundException('Post not found or unauthorized deletion request');
-    
-    await this.userModel.findByIdAndUpdate(userId, { $inc: { postCount: -1 } });
-    return { success: true, message: 'Post successfully eliminated' };
   }
 }
