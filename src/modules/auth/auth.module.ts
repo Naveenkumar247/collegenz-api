@@ -5,12 +5,11 @@ import { UsersModule } from '../users/users.module';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { GoogleStrategy } from './strategies/google.strategy'; // 1. IMPORT STRATEGY
+import { GoogleStrategy } from './strategies/google.strategy';
 
 @Module({
   imports: [
-    UsersModule,
+    UsersModule, // Grants access to find or create users in MongoDB
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -24,8 +23,7 @@ import { GoogleStrategy } from './strategies/google.strategy'; // 1. IMPORT STRA
   controllers: [AuthController],
   providers: [
     AuthService, 
-    JwtStrategy, 
-    GoogleStrategy // 2. REGISTER GOOGLE STRATEGY HERE
+    GoogleStrategy // Registers Google OAuth strategy layer safely
   ],
   exports: [AuthService, PassportModule],
 })
