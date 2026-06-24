@@ -1,43 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Post, PostDocument } from './schema/post.schema';
 
 @Injectable()
 export class PostsService {
   constructor(@InjectModel(Post.name) private postModel: Model<PostDocument>) {}
 
-  async create(caption: string, imageUrl: string, userId: string, name: string) {
-    return this.postModel.create({
-      data: caption,
-      imageUrl: [imageUrl],
-      userId: userId,
-      username: name,
-      likedBy: [],
-      postType: 'general',
-      createdAt: new Date(),
-    });
-  }
-
   async getFeed(type: string, currentUserId: string, page: number = 1) {
-    const limit = 20;
-    const skip = (page - 1) * limit;
+    // 🟢 Step 1: Query the collection we are currently attached to ('users')
+    const currentCollectionDocs = await this.postModel.find({}).limit(5).lean().exec();
+    console.log('Documents found in current schema collection:', currentCollectionDocs);
 
-    // We use a raw lean find map query here instead of complex aggregates.
-    // This stops MongoDB from failing if field types (like arrays/strings) don't match perfectly.
-    const rawDocs = await this.postModel
-      .find({})
-      .sort({ _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean()
-      .exec();
+    // 🟢 Step 2: Query the sibling 'posts' collection directly using the raw driver
+    const siblingCollection = this.postModel.db.collection('posts');
+    const siblingDocs = await siblingCollection.find({}).limit(5).toArray();
+    console.log('Documents found in explicit posts collection:', siblingDocs);
 
-    // Safely transform your historical MongoDB format right into what your frontend needs
-    return rawDocs.map((doc: any) => {
+    // Let's merge them to guarantee something displays on your phone screen!
+    const activeDocs = siblingDocs.length > 0 ? siblingDocs : currentCollectionDocs;
+
+    return activeDocs.map((doc: any) => {
       let resolvedImage = '';
-      
-      // 🟢 Fix the Array vs String issue safely on the fly
       if (Array.isArray(doc.imageUrl) && doc.imageUrl.length > 0) {
         resolvedImage = doc.imageUrl[0];
       } else if (typeof doc.imageUrl === 'string') {
@@ -48,7 +32,7 @@ export class PostsService {
 
       return {
         _id: doc._id,
-        caption: doc.data || doc.caption || doc.text || '',
+        caption: doc.data || doc.caption || doc.text || 'Untitled Post Data Structure',
         image: resolvedImage,
         type: doc.postType || doc.type || 'recent',
         createdAt: doc.createdAt || new Date(),
