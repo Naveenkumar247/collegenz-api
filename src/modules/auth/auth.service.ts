@@ -66,6 +66,29 @@ export class AuthService {
     return this.generateUserToken(user);
   }
 
+  // Add this method inside your existing AuthService class:
+async validateGoogleUser(googleUser: any) {
+  // Check if user already exists in MongoDB
+  let user = await this.usersService.findByEmail(googleUser.email);
+
+  if (!user) {
+    // If not found, register them automatically
+    user = await this.usersService.create({
+      email: googleUser.email,
+      username: `${googleUser.firstName.toLowerCase()}${Math.floor(1000 + Math.random() * 9000)}`,
+      picture: googleUser.picture,
+      isVerified: true, // Google emails are already pre-verified
+    });
+  }
+
+  // Generate your system JWT login token payload
+  const payload = { sub: user._id, email: user.email };
+  return {
+    accessToken: this.jwtService.sign(payload),
+  };
+}
+  
+
   private generateUserToken(user: UserDocument) {
     const payload = { sub: user._id, email: user.email, zrole: user.zrole };
     return {
