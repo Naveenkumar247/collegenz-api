@@ -32,23 +32,21 @@ export class PostsService {
       .toArray();
 
     return rawDocs.map((doc: any) => {
-      // 🟢 FOOLPROOF IMAGE PARSER: Check all possible database field spellings
       let resolvedImage = '';
       
-      if (Array.isArray(doc.imageUrl) && doc.imageUrl.length > 0) {
-        resolvedImage = doc.imageUrl[0];
-      } else if (typeof doc.imageUrl === 'string' && doc.imageUrl.trim() !== '') {
-        resolvedImage = doc.imageUrl;
-      } else if (typeof doc.image === 'string' && doc.image.trim() !== '') {
-        resolvedImage = doc.image;
-      } else if (Array.isArray(doc.image) && doc.image.length > 0) {
-        resolvedImage = doc.image[0];
+      // 🟢 FIXED: Checking 'doc.imageurl' (all lowercase) along with the other options
+      const targetImages = doc.imageUrl || doc.imageurl || doc.image;
+
+      if (Array.isArray(targetImages) && targetImages.length > 0) {
+        resolvedImage = targetImages[0];
+      } else if (typeof targetImages === 'string' && targetImages.trim() !== '') {
+        resolvedImage = targetImages;
       }
 
       return {
         _id: doc._id,
         caption: doc.data || doc.caption || '',
-        image: resolvedImage, // Sent directly to PostCard component
+        image: resolvedImage, 
         type: doc.postType || 'general',
         createdAt: doc.createdAt || new Date(),
         likesCount: Array.isArray(doc.likedBy) ? doc.likedBy.length : 0,
