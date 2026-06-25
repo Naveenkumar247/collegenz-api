@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User, UserDocument } from '../posts/schema/user.schema'; // 🟢 Adjusted safe module mapping path location
+import { User, UserDocument } from '../posts/schema/user.schema';// 🟢 Adjusted safe module mapping path location
 import { JwtService } from '@nestjs/jwt';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
