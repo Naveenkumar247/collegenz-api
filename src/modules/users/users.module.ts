@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-// 🟢 FIXED: Changed plural names to match singular NestJS file generation defaults
-import { UsersController } from './user.controller'; 
-import { UsersService } from './user.service';       
+import { UsersController } from './users.controller'; // 🟢 Matched to plural filename
+import { UsersService } from './users.service';       // 🟢 Matched to plural filename
 import { User, UserSchema } from './schema/user.schema'; 
 
 @Module({
