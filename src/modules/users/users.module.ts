@@ -1,20 +1,15 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { User, UserSchema } from './schemas/user.schema';
-import { Post, PostSchema } from './schemas/post.schema';
-import { Session, SessionSchema } from './schemas/session.schema';
+import { UsersController } from './users.controller';
+import { UsersService } from './users.service';
+import { User, UserSchema } from '../posts/schema/user.schema'; // 🟢 FIXED: Points directly to uniform layout file
 
 @Module({
   imports: [
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Post.name, schema: PostSchema },
-      { name: Session.name, schema: SessionSchema },
-    ]),
+    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
   ],
-  controllers: [],
-  providers: [],
-  // Exporting structural models so AuthModule or PostModule can consume them immediately
-  exports: [MongooseModule],
+  controllers: [UsersController],
+  providers: [UsersService],
+  exports: [UsersService],
 })
 export class UsersModule {}
