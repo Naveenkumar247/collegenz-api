@@ -27,6 +27,7 @@ export class AuthController {
     const frontendUrl = this.configService.get<string>('FRONTEND_URL');
     
     // Send the token safely to the frontend via a URL query parameter
-    return res.redirect(`${frontendUrl}/login?token=${result.accessToken}`);
+return res.redirect(`${frontendUrl}/login?token=${result.token}`);
+    
   }
 }
