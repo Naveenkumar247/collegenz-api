@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { UsersController } from './users.controller';
-import { UsersService } from './users.service';
-import { User, UserSchema } from './schema/user.schema'; // 🟢 FIXED: Points to its own local folder directly
+// 🟢 FIXED: Changed plural names to match singular NestJS file generation defaults
+import { UsersController } from './user.controller'; 
+import { UsersService } from './user.service';       
+import { User, UserSchema } from './schema/user.schema'; 
 
 @Module({
   imports: [
