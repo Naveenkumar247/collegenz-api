@@ -6,6 +6,7 @@ import { Connection } from 'mongoose';
 export class PostsService {
   constructor(@InjectConnection() private connection: Connection) {}
 
+  // 🟢 Create a new post document
   async create(caption: string, imageUrl: string, userId: string, name: string) {
     const rawCollection = this.connection.db.collection('users');
     return rawCollection.insertOne({
@@ -19,7 +20,41 @@ export class PostsService {
     });
   }
 
-  async getFeed(type: string, currentUserId: string, page: number = 1) {
+  // 🟢 Fetch Featured Slider Cards from the 'featureds' collection
+  async getFeatured() {
+    const featuredCollection = this.connection.db.collection('featureds');
+    
+    const rawFeatured = await featuredCollection
+      .find({})
+      .sort({ featuredOrder: 1 })
+      .toArray();
+
+    return rawFeatured.map((doc: any) => {
+      let resolvedImage = '';
+      const targetImages = doc.imageUrl || doc.imageurl || doc.image;
+
+      if (Array.isArray(targetImages) && targetImages.length > 0) {
+        resolvedImage = targetImages[0];
+      } else if (typeof targetImages === 'string' && targetImages.trim() !== '') {
+        resolvedImage = targetImages;
+      }
+
+      return {
+        _id: doc._id,
+        caption: doc.data || doc.caption || '',
+        image: resolvedImage,
+        type: doc.postType || 'general',
+        featuredOrder: doc.featuredOrder || 0,
+        author: {
+          username: doc.username || 'CollegenZ User',
+          picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
+        },
+      };
+    });
+  }
+
+  // 🟢 Fetch General Scroll Feed Posts from the 'users' collection
+  async getFeed(type: string, currentUserId?: string, page: number = 1) {
     const limit = 20;
     const skip = (page - 1) * limit;
     const rawCollection = this.connection.db.collection('users');
@@ -34,7 +69,7 @@ export class PostsService {
     return rawDocs.map((doc: any) => {
       let resolvedImage = '';
       
-      // 🟢 FIXED: Checking 'doc.imageurl' (all lowercase) along with the other options
+      // Case-insensitive variants matching for legacy field setups
       const targetImages = doc.imageUrl || doc.imageurl || doc.image;
 
       if (Array.isArray(targetImages) && targetImages.length > 0) {
@@ -43,6 +78,11 @@ export class PostsService {
         resolvedImage = targetImages;
       }
 
+      // Personalized calculation to check if the current user liked this specific post
+      const hasLiked = currentUserId && Array.isArray(doc.likedBy)
+        ? doc.likedBy.includes(currentUserId)
+        : false;
+
       return {
         _id: doc._id,
         caption: doc.data || doc.caption || '',
@@ -50,6 +90,7 @@ export class PostsService {
         type: doc.postType || 'general',
         createdAt: doc.createdAt || new Date(),
         likesCount: Array.isArray(doc.likedBy) ? doc.likedBy.length : 0,
+        hasLiked: hasLiked, 
         author: {
           username: doc.username || 'CollegenZ User',
           picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
@@ -57,38 +98,4 @@ export class PostsService {
       };
     });
   }
-
-  // Add this method inside your existing PostsService class
-async getFeatured() {
-  const featuredCollection = this.connection.db.collection('featureds');
-  
-  const rawFeatured = await featuredCollection
-    .find({})
-    .sort({ featuredOrder: 1 }) // Sort cards chronologically by your field
-    .toArray();
-
-  return rawFeatured.map((doc: any) => {
-    let resolvedImage = '';
-    const targetImages = doc.imageUrl || doc.imageurl || doc.image;
-
-    if (Array.isArray(targetImages) && targetImages.length > 0) {
-      resolvedImage = targetImages[0];
-    } else if (typeof targetImages === 'string' && targetImages.trim() !== '') {
-      resolvedImage = targetImages;
-    }
-
-    return {
-      _id: doc._id,
-      caption: doc.data || doc.caption || '',
-      image: resolvedImage,
-      type: doc.postType || 'general',
-      featuredOrder: doc.featuredOrder || 0,
-      author: {
-        username: doc.username || 'CollegenZ User',
-        picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
-      },
-    };
-  });
-}
-  
 }
