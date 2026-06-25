@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { UsersController } from './user.controller'; // 🟢 Singular filename, plural class
-import { UsersService } from './user.service';       // 🟢 Singular filename, plural class
+import { UsersController } from './users.controller'; // 🟢 Singular filename, plural class
+import { UsersService } from './users.service';       // 🟢 Singular filename, plural class
 import { User, UserSchema } from './schema/user.schema'; 
 
 @Module({
