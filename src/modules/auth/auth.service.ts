@@ -1,10 +1,9 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User, UserDocument } from '../users/schemas/user.schema';
-import { RegisterDto } from './dto/register.dto';
-import { LoginDto } from './dto/login.dto';
+import { User, UserDocument } from '../posts/schema/user.schema';
 import { JwtService } from '@nestjs/jwt';
+import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -14,78 +13,66 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(registerDto: RegisterDto) {
-    const { email, name, password } = registerDto;
-    
-    const userExists = await this.userModel.findOne({ email });
-    if (userExists) {
-      throw new ConflictException('Email address already registered');
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const createdUser = await this.userModel.create({
-      name,
-      email,
-      password: hashedPassword,
-      username: email.split('@')[0] + Math.floor(Math.random() * 1000),
-    });
-
-    return this.generateUserToken(createdUser);
-  }
-
-  async login(loginDto: LoginDto) {
+  // 🟢 SECURE LOGIN: Validates credentials and appends session tokens directly into MongoDB
+  async login(loginDto: any, req: any) {
     const { email, password } = loginDto;
 
+    // 1. Find the target account entity profile inside MongoDB
     const user = await this.userModel.findOne({ email });
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Invalid credentials matching records');
+    if (!user) {
+      throw new UnauthorizedException('Invalid email or password credentials.');
     }
 
+    // 2. Validate hash signature bounds
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials matching records');
+      throw new UnauthorizedException('Invalid email or password credentials.');
     }
 
-    return this.generateUserToken(user);
-  }
+    // 3. Assemble unique metadata handshake values for this session
+    const currentSession = {
+      sessionId: uuidv4(),
+      deviceAgent: req.headers['user-agent'] || 'Unknown Connection Agent',
+      ipAddress: req.ip || req.connection?.remoteAddress || '127.0.0.1',
+      loginTime: new Date(),
+      lastActive: new Date(),
+    };
 
-  /**
-   * Validates an existing Google user or seamlessly spins up a new account 
-   * directly using the unified database model pool.
-   */
-  async validateGoogleUser(googleProfile: any) {
-    // Gracefully handle both strategy profile payloads structures
-    const email = googleProfile.email || googleProfile.emails?.[0]?.value;
-    const name = googleProfile.name || `${googleProfile.firstName || ''} ${googleProfile.lastName || ''}`.trim();
-    const picture = googleProfile.picture || googleProfile.photos?.[0]?.value;
+    // 4. ATOMIC UPDATE: Append the activeSession meta map block inside the database cluster
+    await this.userModel.updateOne(
+      { _id: user._id },
+      { 
+        $push: { activeSessions: currentSession } 
+      }
+    );
 
-    let user = await this.userModel.findOne({ email });
-    
-    if (!user) {
-      user = await this.userModel.create({
-        name: name || email.split('@')[0],
-        email,
-        picture,
-        googleUser: true,
-        isVerified: true, // Google emails are pre-verified
-        username: email.split('@')[0] + Math.floor(Math.random() * 9000 + 1000),
-      });
-    }
+    // 5. Sign the payload (including context for tracking session revocation later)
+    const payload = { 
+      userId: user._id, 
+      email: user.email,
+      sessionId: currentSession.sessionId 
+    };
 
-    return this.generateUserToken(user);
-  }
-
-  private generateUserToken(user: UserDocument) {
-    const payload = { sub: user._id, email: user.email, zrole: user.zrole };
     return {
-      accessToken: this.jwtService.sign(payload),
+      token: this.jwtService.sign(payload),
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        zrole: user.zrole,
+        username: user.username,
         picture: user.picture,
       },
     };
+  }
+
+  // 🟢 SECURE LOGOUT: Destroys and cleans the target session entry out of the MongoDB array block
+  async logout(userId: string, sessionId: string) {
+    await this.userModel.updateOne(
+      { _id: userId },
+      {
+        $pull: { activeSessions: { sessionId: sessionId } },
+      },
+    );
+    return { success: true, message: 'Session metadata flushed from MongoDB cluster pool.' };
   }
 }
