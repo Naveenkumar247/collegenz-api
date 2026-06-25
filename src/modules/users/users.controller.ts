@@ -1,6 +1,6 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // Adjust if your guard path is different
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'; // 🟢 Verify your casing matches exactly!
 
 @Controller('api/v1/auth')
 export class UsersController {
