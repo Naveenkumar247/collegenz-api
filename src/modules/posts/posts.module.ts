@@ -1,16 +1,17 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { PostsService } from './posts.service';
 import { PostsController } from './posts.controller';
-// ❌ Change from './schemas/post.schema' to:
+import { PostsService } from './posts.service';
 import { Post, PostSchema } from './schema/post.schema';
-
-
+import { User, UserSchema } from '../users/schema/user.schema'; // 🟢 Adjust this path based on your folders
 
 @Module({
   imports: [
-    // Registers the post data model structure within the MongoDB injection scope
-    MongooseModule.forFeature([{ name: Post.name, schema: PostSchema }]),
+    // 🟢 Register BOTH Post and User models inside this module context
+    MongooseModule.forFeature([
+      { name: Post.name, schema: PostSchema },
+      { name: User.name, schema: UserSchema },
+    ]),
   ],
   controllers: [PostsController],
   providers: [PostsService],
