@@ -3,8 +3,9 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export type PostDocument = Post & Document;
 
+// 🟢 strict: false ensures that old unstructured posts without likes/savedBy don't get dropped
 @Schema({ collection: 'posts', strict: false, timestamps: true }) 
-export class Post {
+export class Post extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed })
   data: any;
 
@@ -18,9 +19,12 @@ export class Post {
   username: any;
 
   @Prop({ type: MongooseSchema.Types.Mixed })
+  likedBy: any;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
   postType: any;
 
-  // 🟢 EXPLICIT METRIC TRACKING ARRAYS
+  // 🟢 Core structured relation arrays using MongooseSchema namespaces explicitly
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }], default: [] })
   likes: MongooseSchema.Types.ObjectId[];
 
