@@ -3,7 +3,8 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export type PostDocument = Post & Document;
 
-// 🟢 strict: false ensures that old unstructured posts without likes/savedBy don't get dropped
+// 🟢 WORKAROUND: If your posts are sitting inside your main 'users' collection or a custom 'feed' table, 
+// 🟢 change the string 'posts' below to 'users' or 'feed' to point Mongoose to your data instantly!
 @Schema({ collection: 'posts', strict: false, timestamps: true }) 
 export class Post extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed })
@@ -24,7 +25,6 @@ export class Post extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed })
   postType: any;
 
-  // 🟢 Core structured relation arrays using MongooseSchema namespaces explicitly
   @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }], default: [] })
   likes: MongooseSchema.Types.ObjectId[];
 
