@@ -11,10 +11,12 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  // Serves the full feed timeline with normalized counts for all 3 metrics
+  // 🟢 Serves feed with active validation console loggers
   async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
+
+    console.log(`📡 getFeed Endpoint Called | User Context: ${userId || 'Guest'} | Page: ${pageNum}`);
 
     const rawPosts = await this.postModel
       .find()
@@ -22,6 +24,8 @@ export class PostsService {
       .skip(skip)
       .limit(limit)
       .lean();
+
+    console.log(`📦 Database Verification | Found ${rawPosts.length} post records inside the 'posts' collection.`);
 
     return rawPosts.map((post: any) => ({
       ...post,
@@ -37,7 +41,7 @@ export class PostsService {
     return this.postModel.find({ postType: 'featured' }).limit(5).lean();
   }
 
-  // Toggle Like: Updates Post array and User array
+  // 🟢 atomic unique account tracking updates
   async toggleLikePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
@@ -58,7 +62,6 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // Toggle Save: Updates Post array and User array
   async toggleSavePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
@@ -79,7 +82,6 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // Track Share: Adds user context to sharedBy metric array without duplicating
   async trackSharePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
