@@ -3,11 +3,11 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { PostsController } from './posts.controller';
 import { PostsService } from './posts.service';
 import { Post, PostSchema } from './schema/post.schema';
-import { User, UserSchema } from '../users/schema/user.schema'; // 🟢 Adjust this path based on your folders
+import { User, UserSchema } from '../users/schema/user.schema';
 
 @Module({
   imports: [
-    // 🟢 Register BOTH Post and User models inside this module context
+    // 🟢 Injects BOTH schemas into the local workspace provider cluster context safely
     MongooseModule.forFeature([
       { name: Post.name, schema: PostSchema },
       { name: User.name, schema: UserSchema },
