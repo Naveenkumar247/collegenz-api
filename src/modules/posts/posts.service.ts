@@ -11,7 +11,33 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  // 🔴 1. TOGGLE LIKE: Updates Post Likes Array AND User LikedPosts Array
+  // 🟢 FIXED: Resolves Controller line 57 'getFeed' requirement
+  async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
+    const limit = 10;
+    const skip = (pageNum - 1) * limit;
+
+    const rawPosts = await this.postModel
+      .find()
+      .populate('userId', 'name picture') // Adjust field name if your reference is different
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    return rawPosts.map((post: any) => ({
+      ...post,
+      likesCount: post.likes?.length || 0,
+      isLikedByCurrentUser: post.likes?.some((id: any) => id.toString() === userId) || false,
+      isSavedByCurrentUser: post.savedBy?.some((id: any) => id.toString() === userId) || false,
+    }));
+  }
+
+  // 🟢 FIXED: Resolves Controller line 50 'getFeatured' requirement
+  async getFeatured(): Promise<any[]> {
+    return this.postModel.find({ postType: 'featured' }).limit(5).lean();
+  }
+
+  // 🟢 TOGGLE LIKE: Updates Post 'likes' AND User 'likedPosts'
   async toggleLikePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
@@ -19,54 +45,49 @@ export class PostsService {
     const post = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Target post not found');
 
-    // Check if user already liked the post
-    const hasLiked = post.likes.includes(userObjectId);
+    const hasLiked = post.likes?.some((id: any) => id.toString() === userId);
 
     if (hasLiked) {
-      // Pull/Remove out of both target document matrices
       await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId } });
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
     } else {
-      // Push/Add into both target document matrices
       await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId } });
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { likedPosts: postObjectId } });
     }
 
-    // Return the freshly populated updated post data back to the Next.js client
     return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // 🔴 2. TOGGLE SAVE: Updates Post SavedBy Array AND User SavedPosts Array
+  // 🟢 TOGGLE SAVE: Updates Post 'savedBy' AND User 'savedPosts'
   async toggleSavePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
 
-    const user = await this.userModel.findById(userObjectId);
-    if (!user) throw new NotFoundException('User cluster parameters not found');
+    const post = await this.postModel.findById(postObjectId);
+    if (!post) throw new NotFoundException('Target post not found');
 
-    const isSaved = user.savedPosts?.includes(postObjectId);
+    const isSaved = post.savedBy?.some((id: any) => id.toString() === userId);
 
     if (isSaved) {
-      await this.userModel.updateOne({ _id: userObjectId }, { $pull: { savedPosts: postObjectId } });
       await this.postModel.updateOne({ _id: postObjectId }, { $pull: { savedBy: userObjectId } });
+      await this.userModel.updateOne({ _id: userObjectId }, { $pull: { savedPosts: postObjectId } });
     } else {
-      await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { savedPosts: postObjectId } });
       await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { savedBy: userObjectId } });
+      await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { savedPosts: postObjectId } });
     }
 
     return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // Helper utility to format data perfectly for your frontend PostCard layout parameters
   private async getNormalizedPostForUser(postId: string, userId: string) {
-    const post = await this.postModel.findById(postId).populate('author', 'name picture').lean();
-    const userObjId = new Types.ObjectId(userId);
+    const post: any = await this.postModel.findById(postId).lean();
+    if (!post) throw new NotFoundException('Post not found');
 
     return {
       ...post,
       likesCount: post.likes?.length || 0,
-      isLikedByCurrentUser: post.likes?.some(id => id.toString() === userId) || false,
-      isSavedByCurrentUser: post.savedBy?.some(id => id.toString() === userId) || false,
+      isLikedByCurrentUser: post.likes?.some((id: any) => id.toString() === userId) || false,
+      isSavedByCurrentUser: post.savedBy?.some((id: any) => id.toString() === userId) || false,
     };
   }
 }
