@@ -22,6 +22,13 @@ export class Post {
 
   @Prop({ type: MongooseSchema.Types.Mixed })
   postType: any;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+likes: Types.ObjectId[];
+
+@Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
+savedBy: Types.ObjectId[];
+  
 }
 
 export const PostSchema = SchemaFactory.createForClass(Post);
