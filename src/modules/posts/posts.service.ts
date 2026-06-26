@@ -1,101 +1,72 @@
-import { Injectable } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types } from 'mongoose';
+import { Post } from './schema/post.schema';
+import { User } from '../users/schema/user.schema';
 
 @Injectable()
 export class PostsService {
-  constructor(@InjectConnection() private connection: Connection) {}
+  constructor(
+    @InjectModel(Post.name) private readonly postModel: Model<Post>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
+  ) {}
 
-  // 🟢 Create a new post document
-  async create(caption: string, imageUrl: string, userId: string, name: string) {
-    const rawCollection = this.connection.db.collection('users');
-    return rawCollection.insertOne({
-      data: caption,
-      imageUrl: [imageUrl],
-      userId: userId,
-      username: name,
-      likedBy: [],
-      postType: 'general',
-      createdAt: new Date(),
-    });
+  // 🔴 1. TOGGLE LIKE: Updates Post Likes Array AND User LikedPosts Array
+  async toggleLikePost(postId: string, userId: string): Promise<any> {
+    const postObjectId = new Types.ObjectId(postId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    const post = await this.postModel.findById(postObjectId);
+    if (!post) throw new NotFoundException('Target post not found');
+
+    // Check if user already liked the post
+    const hasLiked = post.likes.includes(userObjectId);
+
+    if (hasLiked) {
+      // Pull/Remove out of both target document matrices
+      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId } });
+      await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
+    } else {
+      // Push/Add into both target document matrices
+      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId } });
+      await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { likedPosts: postObjectId } });
+    }
+
+    // Return the freshly populated updated post data back to the Next.js client
+    return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // 🟢 Fetch Featured Slider Cards from the 'featureds' collection
-  async getFeatured() {
-    const featuredCollection = this.connection.db.collection('featureds');
-    
-    const rawFeatured = await featuredCollection
-      .find({})
-      .sort({ featuredOrder: 1 })
-      .toArray();
+  // 🔴 2. TOGGLE SAVE: Updates Post SavedBy Array AND User SavedPosts Array
+  async toggleSavePost(postId: string, userId: string): Promise<any> {
+    const postObjectId = new Types.ObjectId(postId);
+    const userObjectId = new Types.ObjectId(userId);
 
-    return rawFeatured.map((doc: any) => {
-      let resolvedImage = '';
-      const targetImages = doc.imageUrl || doc.imageurl || doc.image;
+    const user = await this.userModel.findById(userObjectId);
+    if (!user) throw new NotFoundException('User cluster parameters not found');
 
-      if (Array.isArray(targetImages) && targetImages.length > 0) {
-        resolvedImage = targetImages[0];
-      } else if (typeof targetImages === 'string' && targetImages.trim() !== '') {
-        resolvedImage = targetImages;
-      }
+    const isSaved = user.savedPosts?.includes(postObjectId);
 
-      return {
-        _id: doc._id,
-        caption: doc.data || doc.caption || '',
-        image: resolvedImage,
-        type: doc.postType || 'general',
-        featuredOrder: doc.featuredOrder || 0,
-        author: {
-          username: doc.username || 'CollegenZ User',
-          picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
-        },
-      };
-    });
+    if (isSaved) {
+      await this.userModel.updateOne({ _id: userObjectId }, { $pull: { savedPosts: postObjectId } });
+      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { savedBy: userObjectId } });
+    } else {
+      await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { savedPosts: postObjectId } });
+      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { savedBy: userObjectId } });
+    }
+
+    return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // 🟢 Fetch General Scroll Feed Posts from the 'users' collection
-  async getFeed(type: string, currentUserId?: string, page: number = 1) {
-    const limit = 20;
-    const skip = (page - 1) * limit;
-    const rawCollection = this.connection.db.collection('users');
+  // Helper utility to format data perfectly for your frontend PostCard layout parameters
+  private async getNormalizedPostForUser(postId: string, userId: string) {
+    const post = await this.postModel.findById(postId).populate('author', 'name picture').lean();
+    const userObjId = new Types.ObjectId(userId);
 
-    const rawDocs = await rawCollection
-      .find({})
-      .sort({ _id: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    return rawDocs.map((doc: any) => {
-      let resolvedImage = '';
-      
-      // Case-insensitive variants matching for legacy field setups
-      const targetImages = doc.imageUrl || doc.imageurl || doc.image;
-
-      if (Array.isArray(targetImages) && targetImages.length > 0) {
-        resolvedImage = targetImages[0];
-      } else if (typeof targetImages === 'string' && targetImages.trim() !== '') {
-        resolvedImage = targetImages;
-      }
-
-      // Personalized calculation to check if the current user liked this specific post
-      const hasLiked = currentUserId && Array.isArray(doc.likedBy)
-        ? doc.likedBy.includes(currentUserId)
-        : false;
-
-      return {
-        _id: doc._id,
-        caption: doc.data || doc.caption || '',
-        image: resolvedImage, 
-        type: doc.postType || 'general',
-        createdAt: doc.createdAt || new Date(),
-        likesCount: Array.isArray(doc.likedBy) ? doc.likedBy.length : 0,
-        hasLiked: hasLiked, 
-        author: {
-          username: doc.username || 'CollegenZ User',
-          picture: doc.picture || 'https://www.svgrepo.com/show/532362/user.svg',
-        },
-      };
-    });
+    return {
+      ...post,
+      likesCount: post.likes?.length || 0,
+      isLikedByCurrentUser: post.likes?.some(id => id.toString() === userId) || false,
+      isSavedByCurrentUser: post.savedBy?.some(id => id.toString() === userId) || false,
+    };
   }
 }
