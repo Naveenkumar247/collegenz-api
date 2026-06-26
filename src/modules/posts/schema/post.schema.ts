@@ -5,7 +5,9 @@ export type PostDocument = Post & Document;
 
 // 🟢 WORKAROUND: If your posts are sitting inside your main 'users' collection or a custom 'feed' table, 
 // 🟢 change the string 'posts' below to 'users' or 'feed' to point Mongoose to your data instantly!
+// 🟢 Replace 'posts' with your exact MongoDB collection name (e.g., 'feeds', 'user_posts', or 'users')
 @Schema({ collection: 'posts', strict: false, timestamps: true }) 
+  
 export class Post extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed })
   data: any;
