@@ -1,59 +1,67 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { 
+  Controller, 
+  Get, 
+  Post, 
+  Param, 
+  Query, 
+  Req, 
+  UseGuards 
+} from '@nestjs/common';
 import { PostsService } from './posts.service';
-import { InjectConnection } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
 
 @Controller('posts')
 export class PostsController {
-  constructor(
-    private readonly postsService: PostsService,
-    @InjectConnection() private connection: Connection // Inject raw connection state
-  ) {}
+  constructor(private readonly postsService: PostsService) {}
 
-  // 🟢 NEW: Direct public diagnostic route to verify connection health
-  @Get('db-status')
-  async checkDatabaseStatus() {
-    try {
-      const db = this.connection.db;
-      
-      // 1. Fetch active database name
-      const dbName = db.databaseName;
-      
-      // 2. Fetch all actual collection folder names present in this namespace
-      const collections = await db.listCollections().toArray();
-      const collectionNames = collections.map(c => c.name);
-      
-      // 3. Count documents inside your specific target folder to verify data density
-      let usersDocCount = 0;
-      if (collectionNames.includes('users')) {
-        usersDocCount = await db.collection('users').countDocuments();
-      }
-
-      return {
-        backendConnectedState: 'CONNECTED_SUCCESSFULLY',
-        activeDatabaseNameInUse: dbName,
-        collectionsFoundOnThisCluster: collectionNames,
-        totalDocumentsInsideUsersCollection: usersDocCount,
-        hostUriMasked: 'Verified Cluster Connection Active',
-      };
-    } catch (error: any) {
-      return {
-        backendConnectedState: 'CONNECTION_FAILED_OR_MISCONFIGURED',
-        errorMessage: error.message,
-      };
-    }
+  // 1. GET HORIZONTAL FEATURED STORIES PANEL -> /api/v1/posts/featured
+  @Get('featured')
+  async getFeatured() {
+    return this.postsService.getFeatured();
   }
 
-  // Add this method inside your existing PostsController class
-@Get('featured')
-async getFeaturedPosts() {
-  return this.postsService.getFeatured();
-}
-  
-
+  // 2. GET MAIN TIMELINE FEED STREAM -> /api/v1/posts/feed
   @Get('feed')
-  async getFeed(@Query('type') type: string, @Query('page') page: string, @Req() req: any) {
+  async getFeed(
+    @Query('type') type: string,
+    @Query('page') page: string,
+    @Req() req: any,
+  ) {
     const pageNum = parseInt(page, 10) || 1;
-    return this.postsService.getFeed(type || 'recent', req?.user?.sub || '', pageNum);
+    // req?.user?.sub extracts your authenticated JWT user ID if present, otherwise passes an empty string for guests
+    return this.postsService.getFeed(
+      type || 'recent', 
+      req?.user?.sub || '', 
+      pageNum
+    );
+  }
+
+  // 3. TOGGLE LIKE STATUS -> POST /api/v1/posts/:id/like
+  @Post(':id/like')
+  async toggleLikePost(
+    @Param('id') postId: string,
+    @Req() req: any,
+  ) {
+    const userId = req?.user?.sub || req?.user?.id;
+    return this.postsService.toggleLikePost(postId, userId);
+  }
+
+  // 4. TOGGLE BOOKMARK SAVE STATUS -> POST /api/v1/posts/:id/save
+  @Post(':id/save')
+  async toggleSavePost(
+    @Param('id') postId: string,
+    @Req() req: any,
+  ) {
+    const userId = req?.user?.sub || req?.user?.id;
+    return this.postsService.toggleSavePost(postId, userId);
+  }
+
+  // 5. INCREMENT SHARE TRACKING METRICS -> POST /api/v1/posts/:id/share
+  @Post(':id/share')
+  async trackSharePost(
+    @Param('id') postId: string,
+    @Req() req: any,
+  ) {
+    const userId = req?.user?.sub || req?.user?.id || 'guest';
+    return this.postsService.trackSharePost(postId, userId);
   }
 }
