@@ -11,65 +11,85 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  // 🟢 Serves feed with active validation console loggers
   async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
 
-    console.log(`📡 getFeed Endpoint Called | User Context: ${userId || 'Guest'} | Page: ${pageNum}`);
-
+    // 🟢 Finds EVERYTHING without strict property filters to guarantee documents show up
     const rawPosts = await this.postModel
       .find()
-      .sort({ createdAt: -1 })
+      .sort({ _id: -1 })
       .skip(skip)
       .limit(limit)
       .lean();
 
-    console.log(`📦 Database Verification | Found ${rawPosts.length} post records inside the 'posts' collection.`);
+    const user: any = await this.userModel.findById(userId).lean();
 
-    return rawPosts.map((post: any) => ({
-      ...post,
-      likesCount: post.likes?.length || 0,
-      savesCount: post.savedBy?.length || 0,
-      sharesCount: post.sharedBy?.length || 0,
-      isLikedByCurrentUser: post.likes?.some((id: any) => id.toString() === userId) || false,
-      isSavedByCurrentUser: post.savedBy?.some((id: any) => id.toString() === userId) || false,
-    }));
+    return rawPosts.map((post: any) => {
+      // 🟢 Handles both 'likedBy' (from your raw data) or 'likes' safely
+      const rawLikes = post.likedBy || post.likes || [];
+      const likesArray = Array.isArray(rawLikes) ? rawLikes : [];
+      
+      const rawSaves = post.savedBy || [];
+      const savesArray = Array.isArray(rawSaves) ? rawSaves : [];
+
+      const rawShares = post.sharedBy || [];
+      const sharesArray = Array.isArray(rawShares) ? rawShares : [];
+
+      return {
+        ...post,
+        // Map data keys to what your PostCard front-end expects
+        content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
+        images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
+        author: {
+          name: post.username || 'Anonymous User',
+          picture: 'https://collegenz.in/uploads/profilepic.jpg'
+        },
+        likesCount: likesArray.length,
+        savesCount: savesArray.length,
+        sharesCount: sharesArray.length,
+        isLikedByCurrentUser: likesArray.some((id: any) => id.toString() === userId),
+        isSavedByCurrentUser: savesArray.some((id: any) => id.toString() === userId) || 
+                              (user?.savedPosts?.some((id: any) => id.toString() === post._id.toString()) || false)
+      };
+    });
   }
 
   async getFeatured(): Promise<any[]> {
-    return this.postModel.find({ postType: 'featured' }).limit(5).lean();
+    // Falls back to regular posts if you don't have explicit 'featured' postType entries yet
+    const featured = await this.postModel.find({ postType: 'featured' }).limit(5).lean();
+    if (featured.length > 0) return featured;
+    
+    return this.postModel.find().limit(4).lean();
   }
 
-  // 🟢 atomic unique account tracking updates
   async toggleLikePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
-
-    const post = await this.postModel.findById(postObjectId);
+    const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
-    const hasLiked = post.likes?.some((id: any) => id.toString() === userId);
+    const likesArray = Array.isArray(post.likes) ? post.likes : [];
+    const hasLiked = likesArray.some((id: any) => id.toString() === userId);
 
     if (hasLiked) {
-      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId } });
+      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId }, $pullAll: { likedBy: [userObjectId] } });
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
     } else {
-      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId } });
+      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId }, $addToSet: { likedBy: userObjectId } });
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { likedPosts: postObjectId } });
     }
-
     return this.getNormalizedPostForUser(postId, userId);
   }
 
   async toggleSavePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = new Types.ObjectId(userId);
-
-    const post = await this.postModel.findById(postObjectId);
+    const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
-    const isSaved = post.savedBy?.some((id: any) => id.toString() === userId);
+    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+    const isSaved = savesArray.some((id: any) => id.toString() === userId);
 
     if (isSaved) {
       await this.postModel.updateOne({ _id: postObjectId }, { $pull: { savedBy: userObjectId } });
@@ -78,33 +98,34 @@ export class PostsService {
       await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { savedBy: userObjectId } });
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { savedPosts: postObjectId } });
     }
-
     return this.getNormalizedPostForUser(postId, userId);
   }
 
   async trackSharePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = new Types.ObjectId(userId);
-
-    await this.postModel.updateOne(
-      { _id: postObjectId },
-      { $addToSet: { sharedBy: userObjectId } }
-    );
-
+    const userObjectId = new Types.ObjectId(userId || new Types.ObjectId());
+    await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
     return this.getNormalizedPostForUser(postId, userId);
   }
 
   private async getNormalizedPostForUser(postId: string, userId: string) {
     const post: any = await this.postModel.findById(postId).lean();
     if (!post) throw new NotFoundException('Post not found');
+    const user: any = await this.userModel.findById(userId).lean();
+
+    const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
+    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
     return {
       ...post,
-      likesCount: post.likes?.length || 0,
-      savesCount: post.savedBy?.length || 0,
-      sharesCount: post.sharedBy?.length || 0,
-      isLikedByCurrentUser: post.likes?.some((id: any) => id.toString() === userId) || false,
-      isSavedByCurrentUser: post.savedBy?.some((id: any) => id.toString() === userId) || false,
+      content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
+      images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
+      likesCount: likesArray.length,
+      savesCount: savesArray.length,
+      isLikedByCurrentUser: likesArray.some((id: any) => id.toString() === userId),
+      isSavedByCurrentUser: savesArray.some((id: any) => id.toString() === userId) || 
+                            (user?.savedPosts?.some((id: any) => id.toString() === postId) || false)
     };
   }
-}
+  }
+    
