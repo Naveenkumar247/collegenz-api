@@ -73,14 +73,23 @@ export class PostsService {
     const hasLiked = likesArray.some((id: any) => id.toString() === userId);
 
     if (hasLiked) {
-      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId }, $pullAll: { likedBy: [userObjectId] } });
+      // 🟢 FIXED: Combined into a single atomic $pull block object
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { $pull: { likes: userObjectId, likedBy: userObjectId } }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
     } else {
-      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId }, $addToSet: { likedBy: userObjectId } });
+      // 🟢 FIXED: Combined into a single atomic $addToSet block object (Clears TS1117)
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { $addToSet: { likes: userObjectId, likedBy: userObjectId } }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { likedPosts: postObjectId } });
     }
     return this.getNormalizedPostForUser(postId, userId);
   }
+  
 
   async toggleSavePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
