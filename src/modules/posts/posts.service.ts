@@ -16,7 +16,6 @@ export class PostsService {
     const skip = (pageNum - 1) * limit;
 
     try {
-      // It will now successfully pull from the 'users' collection!
       const rawPosts = await this.postModel
         .find()
         .sort({ _id: -1 })
@@ -38,13 +37,17 @@ export class PostsService {
 
         return {
           ...post,
-          content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
-          images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
+          // Safely map caption/text from DB to frontend content
+          content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
+          // Safely map single image string to images array for frontend
+          images: Array.isArray(post.images) ? post.images : (post.image ? [post.image] : []),
           author: {
-            name: post.username || post.author?.name || 'Anonymous User',
-            picture: post.avatar || post.author?.picture || 'https://collegenz.in/uploads/profilepic.jpg'
+            name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
+            // 🟢 FIXED: Prioritizing post.picture to match your exact database JSON
+            picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
           },
-          likesCount: likesArray.length,
+          // Use pre-calculated likesCount if it exists, otherwise calculate from array
+          likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
           savesCount: savesArray.length,
           isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
           isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
@@ -123,11 +126,16 @@ export class PostsService {
     const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
+    // 🟢 FIXED: Kept the normalization logic identical to getFeed so the UI doesn't break when a user clicks 'like'
     return {
       ...post,
-      content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
-      images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
-      likesCount: likesArray.length,
+      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
+      images: Array.isArray(post.images) ? post.images : (post.image ? [post.image] : []),
+      author: {
+        name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
+        picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+      },
+      likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
       savesCount: savesArray.length,
       isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
       isSavedByCurrentUser: userId ? savesArray.some((id: any) => id.toString() === userId.toString()) : false,
