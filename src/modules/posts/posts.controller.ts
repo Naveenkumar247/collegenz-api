@@ -1,25 +1,35 @@
-import { 
-  Controller, 
-  Get, 
-  Post, 
-  Param, 
-  Query, 
-  Req, 
-  UseGuards 
-} from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Req } from '@nestjs/common';
 import { PostsService } from './posts.service';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
-  // 1. GET HORIZONTAL FEATURED STORIES PANEL -> /api/v1/posts/featured
+  // 🟢 FIXED: Forcefully extracts the User ID directly from the Bearer token
+  private extractUserId(req: any): string {
+    // 1. If an AuthGuard successfully populated the user, use it.
+    if (req?.user?.sub) return req.user.sub;
+    if (req?.user?.id) return req.user.id;
+    
+    // 2. Fallback: Manually decode the JWT from the headers
+    const authHeader = req?.headers?.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+        return payload.sub || payload.id || payload._id || '';
+      } catch (e) {
+        return '';
+      }
+    }
+    return '';
+  }
+
   @Get('featured')
   async getFeatured() {
     return this.postsService.getFeatured();
   }
 
-  // 2. GET MAIN TIMELINE FEED STREAM -> /api/v1/posts/feed
   @Get('feed')
   async getFeed(
     @Query('type') type: string,
@@ -27,41 +37,34 @@ export class PostsController {
     @Req() req: any,
   ) {
     const pageNum = parseInt(page, 10) || 1;
-    // req?.user?.sub extracts your authenticated JWT user ID if present, otherwise passes an empty string for guests
-    return this.postsService.getFeed(
-      type || 'recent', 
-      req?.user?.sub || '', 
-      pageNum
-    );
+    const userId = this.extractUserId(req);
+    return this.postsService.getFeed(type || 'recent', userId, pageNum);
   }
 
-  // 3. TOGGLE LIKE STATUS -> POST /api/v1/posts/:id/like
   @Post(':id/like')
   async toggleLikePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
-    const userId = req?.user?.sub || req?.user?.id;
+    const userId = this.extractUserId(req);
     return this.postsService.toggleLikePost(postId, userId);
   }
 
-  // 4. TOGGLE BOOKMARK SAVE STATUS -> POST /api/v1/posts/:id/save
   @Post(':id/save')
   async toggleSavePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
-    const userId = req?.user?.sub || req?.user?.id;
+    const userId = this.extractUserId(req);
     return this.postsService.toggleSavePost(postId, userId);
   }
 
-  // 5. INCREMENT SHARE TRACKING METRICS -> POST /api/v1/posts/:id/share
   @Post(':id/share')
   async trackSharePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
-    const userId = req?.user?.sub || req?.user?.id || 'guest';
+    const userId = this.extractUserId(req);
     return this.postsService.trackSharePost(postId, userId);
   }
 }
