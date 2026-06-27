@@ -35,18 +35,19 @@ export class PostsService {
         const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
         const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
+        // 🟢 FIXED: Safely check for 'imageurl' (all lowercase) and ignore empty 'images' arrays
+        const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
+          ? post.images 
+          : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+
         return {
           ...post,
-          // Safely map caption/text from DB to frontend content
           content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
-          // Safely map single image string to images array for frontend
-          images: Array.isArray(post.images) ? post.images : (post.image ? [post.image] : []),
+          images: resolvedImages,
           author: {
             name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
-            // 🟢 FIXED: Prioritizing post.picture to match your exact database JSON
             picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
           },
-          // Use pre-calculated likesCount if it exists, otherwise calculate from array
           likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
           savesCount: savesArray.length,
           isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
@@ -126,11 +127,15 @@ export class PostsService {
     const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
-    // 🟢 FIXED: Kept the normalization logic identical to getFeed so the UI doesn't break when a user clicks 'like'
+    // 🟢 FIXED: Applied the same image logic here
+    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
+      ? post.images 
+      : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+
     return {
       ...post,
       content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
-      images: Array.isArray(post.images) ? post.images : (post.image ? [post.image] : []),
+      images: resolvedImages,
       author: {
         name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
         picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
