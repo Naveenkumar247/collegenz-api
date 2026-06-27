@@ -11,6 +11,31 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
+  // 🟢 UNIVERSAL FORMATTER: Ensures all routes (Feed & Featured) format images perfectly
+  private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
+    const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
+    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+
+    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
+      ? post.images 
+      : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+
+    return {
+      ...post,
+      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
+      images: resolvedImages,
+      author: {
+        name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
+        picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+      },
+      likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
+      savesCount: savesArray.length,
+      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
+      isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
+                            userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
+    };
+  }
+
   async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
@@ -31,30 +56,8 @@ export class PostsService {
         }
       }
 
-      return rawPosts.map((post: any) => {
-        const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
-        const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
-
-        // 🟢 FIXED: Safely check for 'imageurl' (all lowercase) and ignore empty 'images' arrays
-        const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
-          ? post.images 
-          : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
-
-        return {
-          ...post,
-          content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
-          images: resolvedImages,
-          author: {
-            name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
-            picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
-          },
-          likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
-          savesCount: savesArray.length,
-          isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
-          isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
-                                userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
-        };
-      });
+      // Route data through the universal formatter
+      return rawPosts.map((post: any) => this.formatPost(post, userId, userSavedPosts));
     } catch (error) {
       console.error('🚨 Crash caught inside getFeed service:', error);
       return [];
@@ -63,9 +66,15 @@ export class PostsService {
 
   async getFeatured(): Promise<any[]> {
     try {
-      const featured = await this.postModel.find({ postType: 'featured' }).limit(5).lean();
-      if (featured.length > 0) return featured;
-      return this.postModel.find().limit(4).lean();
+      let rawPosts = await this.postModel.find({ postType: 'featured' }).limit(5).lean();
+      
+      // If no explicit featured posts exist, fallback to recent posts
+      if (!rawPosts || rawPosts.length === 0) {
+        rawPosts = await this.postModel.find().sort({ _id: -1 }).limit(4).lean();
+      }
+
+      // 🟢 FIXED: Featured posts now route through the exact same formatting pipeline!
+      return rawPosts.map((post: any) => this.formatPost(post, ''));
     } catch {
       return [];
     }
@@ -124,26 +133,14 @@ export class PostsService {
     const post: any = await this.postModel.findById(postId).lean();
     if (!post) throw new NotFoundException('Post not found');
 
-    const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
-    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+    let userSavedPosts: any[] = [];
+    if (userId && Types.ObjectId.isValid(userId)) {
+      const user: any = await this.userModel.findById(userId).lean();
+      if (user && Array.isArray(user.savedPosts)) {
+        userSavedPosts = user.savedPosts;
+      }
+    }
 
-    // 🟢 FIXED: Applied the same image logic here
-    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
-      ? post.images 
-      : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
-
-    return {
-      ...post,
-      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
-      images: resolvedImages,
-      author: {
-        name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
-        picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
-      },
-      likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
-      savesCount: savesArray.length,
-      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
-      isSavedByCurrentUser: userId ? savesArray.some((id: any) => id.toString() === userId.toString()) : false,
-    };
+    return this.formatPost(post, userId, userSavedPosts);
   }
 }
