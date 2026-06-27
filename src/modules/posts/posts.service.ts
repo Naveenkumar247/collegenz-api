@@ -3,15 +3,17 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post } from './schema/post.schema';
 import { User } from '../users/schema/user.schema';
+import { Featured } from './schema/featured.schema'; // 🟢 Added your Featured schema import
 
 @Injectable()
 export class PostsService {
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Featured.name) private readonly featuredModel: Model<Featured>, // 🟢 Injected your Featured model
   ) {}
 
-  // 🟢 UNIVERSAL FORMATTER: Ensures all routes (Feed & Featured) format images perfectly
+  // Formatter for the standard timeline feed
   private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
     const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
@@ -56,7 +58,6 @@ export class PostsService {
         }
       }
 
-      // Route data through the universal formatter
       return rawPosts.map((post: any) => this.formatPost(post, userId, userSavedPosts));
     } catch (error) {
       console.error('🚨 Crash caught inside getFeed service:', error);
@@ -64,18 +65,31 @@ export class PostsService {
     }
   }
 
+  // 🟢 REWRITTEN: Now properly pulls from your 'featureds' collection
   async getFeatured(): Promise<any[]> {
     try {
-      let rawPosts = await this.postModel.find({ postType: 'featured' }).limit(5).lean();
-      
-      // If no explicit featured posts exist, fallback to recent posts
-      if (!rawPosts || rawPosts.length === 0) {
-        rawPosts = await this.postModel.find().sort({ _id: -1 }).limit(4).lean();
+      const rawFeatured = await this.featuredModel
+        .find({ isFeatured: true, status: 'APPROVED' })
+        .sort({ featuredOrder: -1 }) // Assuming you want highest priority order first
+        .limit(5)
+        .lean();
+
+      if (!rawFeatured || rawFeatured.length === 0) {
+        return [];
       }
 
-      // 🟢 FIXED: Featured posts now route through the exact same formatting pipeline!
-      return rawPosts.map((post: any) => this.formatPost(post, ''));
-    } catch {
+      // Maps your precise Featured schema layout to what the frontend UI expects
+      return rawFeatured.map((feat: any) => ({
+        ...feat,
+        content: feat.data || '', 
+        images: Array.isArray(feat.imageurl) ? feat.imageurl : [], // Maps your string[] explicitly
+        author: {
+          name: feat.username || 'Anonymous User',
+          picture: feat.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+        }
+      }));
+    } catch (error) {
+      console.error('🚨 Failed to fetch featured posts:', error);
       return [];
     }
   }
