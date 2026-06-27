@@ -11,53 +11,39 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
-    const limit = 10;
-    const skip = (pageNum - 1) * limit;
-
+  async getFeed(type: string, userId: string, pageNum: number): Promise<any> {
     try {
-      // 🟢 THE REAL QUERY: Fetching actual posts instead of diagnostic text
+      const skip = (pageNum - 1) * 10;
+      
+      // 1. Fetch raw data directly, absolutely no formatting loops
       const rawPosts = await this.postModel
         .find()
         .sort({ _id: -1 })
-        .skip(skip)
-        .limit(limit)
+        .skip(skip || 0)
+        .limit(10)
         .lean();
 
-      let userSavedPosts: any[] = [];
-      if (userId && Types.ObjectId.isValid(userId)) {
-        const user: any = await this.userModel.findById(userId).lean();
-        if (user && Array.isArray(user.savedPosts)) {
-          userSavedPosts = user.savedPosts;
-        }
+      // 2. If it is genuinely empty, tell us exactly WHY
+      if (!rawPosts || rawPosts.length === 0) {
+        return {
+          ALERT: "DATABASE IS CONNECTED BUT EMPTY",
+          reason: "Mongoose is looking at the 'posts' collection, but found 0 documents.",
+          fix: "Check your MONGODB_URI in your Render Dashboard Environment Variables. Make sure you included the database name before the question mark! (e.g., mongodb+srv://...cluster.mongodb.net/YOUR_DB_NAME?retryWrites...)"
+        };
       }
 
-      // Map it into the format your frontend expects
-      return rawPosts.map((post: any) => {
-        const likesArray = Array.isArray(post.likes) ? post.likes : 
-                           (Array.isArray(post.likedBy) ? post.likedBy : []);
-        const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+      // 3. If data exists, return it exactly like your second screenshot!
+      return rawPosts;
 
-        return {
-          ...post,
-          content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
-          images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
-          author: {
-            name: post.username || post.author?.name || 'Anonymous User',
-            picture: post.avatar || post.author?.picture || 'https://collegenz.in/uploads/profilepic.jpg'
-          },
-          likesCount: likesArray.length,
-          savesCount: savesArray.length,
-          isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
-          isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
-                                userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
-        };
-      });
     } catch (error) {
-      console.error('🚨 Crash caught inside getFeed service:', error);
-      return [];
+      // 4. If the database query crashes, print the actual crash to the screen!
+      return { 
+        ALERT: "BACKEND CRASH", 
+        message: error.message 
+      };
     }
   }
+  
 
   async getFeatured(): Promise<any[]> {
     try {
