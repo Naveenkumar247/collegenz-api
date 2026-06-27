@@ -11,23 +11,51 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
   ) {}
 
-  async getFeed(type: string, userId: string, pageNum: number): Promise<any> {
+  async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
 
     try {
-      // 🟢 DATABASE DIAGNOSTIC ROUTE
-      const db = this.postModel.db.db;
-      const collections = await db.listCollections().toArray();
-      const collectionNames = collections.map(c => c.name);
-      
-      return {
-        message: "Diagnostic running successfully!",
-        activeCollectionMongooseIsLookingAt: this.postModel.collection.name,
-        allFoundCollectionsInYourDatabase: collectionNames
-      };
+      // 🟢 THE REAL QUERY: Fetching actual posts instead of diagnostic text
+      const rawPosts = await this.postModel
+        .find()
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      let userSavedPosts: any[] = [];
+      if (userId && Types.ObjectId.isValid(userId)) {
+        const user: any = await this.userModel.findById(userId).lean();
+        if (user && Array.isArray(user.savedPosts)) {
+          userSavedPosts = user.savedPosts;
+        }
+      }
+
+      // Map it into the format your frontend expects
+      return rawPosts.map((post: any) => {
+        const likesArray = Array.isArray(post.likes) ? post.likes : 
+                           (Array.isArray(post.likedBy) ? post.likedBy : []);
+        const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+
+        return {
+          ...post,
+          content: post.content || post.caption || post.text || (post.data ? String(post.data) : ''),
+          images: Array.isArray(post.images) ? post.images : (post.imageUrl ? [post.imageUrl] : []),
+          author: {
+            name: post.username || post.author?.name || 'Anonymous User',
+            picture: post.avatar || post.author?.picture || 'https://collegenz.in/uploads/profilepic.jpg'
+          },
+          likesCount: likesArray.length,
+          savesCount: savesArray.length,
+          isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
+          isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
+                                userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
+        };
+      });
     } catch (error) {
-      return { error: error.message };
+      console.error('🚨 Crash caught inside getFeed service:', error);
+      return [];
     }
   }
 
@@ -50,7 +78,6 @@ export class PostsService {
     if (!post) throw new NotFoundException('Post not found');
 
     const likesArray = Array.isArray(post.likes) ? post.likes : [];
-    // 🟢 FIXED: Safely compare IDs using .toString() to fix TS2345
     const hasLiked = likesArray.some((id: any) => id.toString() === userObjectId.toString());
 
     if (hasLiked) {
