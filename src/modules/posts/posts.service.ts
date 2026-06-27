@@ -65,12 +65,12 @@ export class PostsService {
     }
   }
 
-  // 🟢 REWRITTEN: Now properly pulls from your 'featureds' collection
   async getFeatured(): Promise<any[]> {
     try {
+      // 🟢 FIXED: Removed the overly strict filters. It will now just grab the latest 5 documents from the 'featureds' collection!
       const rawFeatured = await this.featuredModel
-        .find({ isFeatured: true, status: 'APPROVED' })
-        .sort({ featuredOrder: -1 }) // Assuming you want highest priority order first
+        .find() 
+        .sort({ _id: -1 }) // Gets the newest ones first
         .limit(5)
         .lean();
 
@@ -81,8 +81,9 @@ export class PostsService {
       // Maps your precise Featured schema layout to what the frontend UI expects
       return rawFeatured.map((feat: any) => ({
         ...feat,
-        content: feat.data || '', 
-        images: Array.isArray(feat.imageurl) ? feat.imageurl : [], // Maps your string[] explicitly
+        content: feat.data || feat.caption || '', 
+        // 🟢 FIXED: Safely maps your string[] imageurl
+        images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : []), 
         author: {
           name: feat.username || 'Anonymous User',
           picture: feat.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
@@ -93,6 +94,7 @@ export class PostsService {
       return [];
     }
   }
+  
 
   async toggleLikePost(postId: string, userId: string): Promise<any> {
     if (!postId || !userId) throw new NotFoundException('Invalid arguments');
