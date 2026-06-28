@@ -3,21 +3,23 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post } from './schema/post.schema';
 import { User } from '../users/schema/user.schema';
-import { Featured } from './schema/featured.schema'; // 🟢 Added your Featured schema import
+import { Featured } from './schema/featured.schema';
 
 @Injectable()
 export class PostsService {
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(Featured.name) private readonly featuredModel: Model<Featured>, // 🟢 Injected your Featured model
+    @InjectModel(Featured.name) private readonly featuredModel: Model<Featured>,
   ) {}
 
-  // Formatter for the standard timeline feed
+  // 🟢 UNIVERSAL FORMATTER: Ensures all routes format images, likes, and saves perfectly
   private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
-    const likesArray = Array.isArray(post.likes) ? post.likes : (Array.isArray(post.likedBy) ? post.likedBy : []);
+    // 1. Safely extract arrays (fallback to empty array if missing)
+    const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
+    // 2. Safely resolve images from your specific database fields
     const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
       ? post.images 
       : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
@@ -30,8 +32,11 @@ export class PostsService {
         name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
         picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
       },
-      likesCount: post.likesCount !== undefined ? post.likesCount : likesArray.length,
-      savesCount: savesArray.length,
+      // 3. Fallback to calculating the array length if the number field gets out of sync
+      likesCount: typeof post.likes === 'number' ? post.likes : likesArray.length,
+      savesCount: typeof post.saves === 'number' ? post.saves : savesArray.length,
+      
+      // 4. Determine if the current user has interacted with this post
       isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
       isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
                             userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
@@ -67,10 +72,9 @@ export class PostsService {
 
   async getFeatured(): Promise<any[]> {
     try {
-      // 🟢 FIXED: Removed the overly strict filters. It will now just grab the latest 5 documents from the 'featureds' collection!
       const rawFeatured = await this.featuredModel
-        .find() 
-        .sort({ _id: -1 }) // Gets the newest ones first
+        .find()
+        .sort({ _id: -1 })
         .limit(5)
         .lean();
 
@@ -78,11 +82,9 @@ export class PostsService {
         return [];
       }
 
-      // Maps your precise Featured schema layout to what the frontend UI expects
       return rawFeatured.map((feat: any) => ({
         ...feat,
         content: feat.data || feat.caption || '', 
-        // 🟢 FIXED: Safely maps your string[] imageurl
         images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : []), 
         author: {
           name: feat.username || 'Anonymous User',
@@ -94,7 +96,6 @@ export class PostsService {
       return [];
     }
   }
-  
 
   async toggleLikePost(postId: string, userId: string): Promise<any> {
     if (!postId || !userId) throw new NotFoundException('Invalid arguments');
@@ -104,16 +105,31 @@ export class PostsService {
     const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
-    const likesArray = Array.isArray(post.likes) ? post.likes : [];
+    const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const hasLiked = likesArray.some((id: any) => id.toString() === userObjectId.toString());
 
     if (hasLiked) {
-      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { likes: userObjectId, likedBy: userObjectId } });
+      // 🟢 User un-likes: Pull ID from array and subtract 1 from count
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { 
+          $pull: { likedBy: userObjectId },
+          $inc: { likes: -1 } 
+        }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
     } else {
-      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { likes: userObjectId, likedBy: userObjectId } });
+      // 🟢 User likes: Add ID to array and add 1 to count
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { 
+          $addToSet: { likedBy: userObjectId },
+          $inc: { likes: 1 }
+        }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { likedPosts: postObjectId } });
     }
+    
     return this.getNormalizedPostForUser(postId, userId);
   }
 
@@ -129,19 +145,37 @@ export class PostsService {
     const isSaved = savesArray.some((id: any) => id.toString() === userObjectId.toString());
 
     if (isSaved) {
-      await this.postModel.updateOne({ _id: postObjectId }, { $pull: { savedBy: userObjectId } });
+      // 🟢 User un-saves
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { 
+          $pull: { savedBy: userObjectId },
+          $inc: { saves: -1 }
+        }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { savedPosts: postObjectId } });
     } else {
-      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { savedBy: userObjectId } });
+      // 🟢 User saves
+      await this.postModel.updateOne(
+        { _id: postObjectId }, 
+        { 
+          $addToSet: { savedBy: userObjectId },
+          $inc: { saves: 1 }
+        }
+      );
       await this.userModel.updateOne({ _id: userObjectId }, { $addToSet: { savedPosts: postObjectId } });
     }
+    
     return this.getNormalizedPostForUser(postId, userId);
   }
 
   async trackSharePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = userId ? new Types.ObjectId(userId) : new Types.ObjectId();
+    
+    // We can assume share tracking is just appending an ID to an array
     await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
+    
     return this.getNormalizedPostForUser(postId, userId || '');
   }
 
