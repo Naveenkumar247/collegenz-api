@@ -3,11 +3,7 @@ import { Document, Schema as MongooseSchema } from 'mongoose';
 
 export type PostDocument = Post & Document;
 
-// 🟢 WORKAROUND: If your posts are sitting inside your main 'users' collection or a custom 'feed' table, 
-// 🟢 change the string 'posts' below to 'users' or 'feed' to point Mongoose to your data instantly!
-// 🟢 Replace 'posts' with your exact MongoDB collection name (e.g., 'feeds', 'user_posts', or 'users')
 @Schema({ collection: 'users', strict: false, timestamps: true }) 
-  
 export class Post extends Document {
   @Prop({ type: MongooseSchema.Types.Mixed })
   data: any;
@@ -22,18 +18,23 @@ export class Post extends Document {
   username: any;
 
   @Prop({ type: MongooseSchema.Types.Mixed })
-  likedBy: any;
-
-  @Prop({ type: MongooseSchema.Types.Mixed })
   postType: any;
 
-  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }], default: [] })
-  likes: MongooseSchema.Types.ObjectId[];
+  // 🟢 FIXED: 'likes' and 'saves' are numbers in your DB
+  @Prop({ type: Number, default: 0 })
+  likes: number;
 
-  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }], default: [] })
+  @Prop({ type: Number, default: 0 })
+  saves: number;
+
+  // 🟢 FIXED: 'likedBy' and 'savedBy' are the actual arrays
+  @Prop({ type: [MongooseSchema.Types.ObjectId], default: [] })
+  likedBy: MongooseSchema.Types.ObjectId[];
+
+  @Prop({ type: [MongooseSchema.Types.ObjectId], default: [] })
   savedBy: MongooseSchema.Types.ObjectId[];
 
-  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'User' }], default: [] })
+  @Prop({ type: [MongooseSchema.Types.ObjectId], default: [] })
   sharedBy: MongooseSchema.Types.ObjectId[];
 }
 
