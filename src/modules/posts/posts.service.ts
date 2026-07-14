@@ -13,7 +13,6 @@ export class PostsService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Featured.name) private readonly featuredModel: Model<Featured>,
   ) {
-    // 🟢 NEW: Configure Cloudinary for the upload feature
     cloudinary.config({ 
       cloud_name: process.env.CLOUDINARY_NAME, 
       api_key: process.env.CLOUDINARY_KEY, 
@@ -21,8 +20,8 @@ export class PostsService {
     });
   }
 
-  // 🟢 NEW: The Create Post method handling Cloudinary uploads
-  async createPost(body: any, files: Express.Multer.File[], userId: string) {
+  // 🟢 FIXED: Removed Express.Multer strict typing
+  async createPost(body: any, files: any[], userId: string) {
     const { post_type, data } = body;
     
     if (!post_type || !data) {
@@ -74,7 +73,6 @@ export class PostsService {
     return { success: true, message: "Post created successfully" };
   }
 
-  // 🟢 EXISTING: Universal Formatter
   private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
     const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
@@ -244,4 +242,5 @@ export class PostsService {
 
     return this.formatPost(post, userId, userSavedPosts);
   }
-}
+      }
+        
