@@ -2,11 +2,10 @@ import { Controller, Get, Post, Param, Query, Req, UseInterceptors, UploadedFile
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PostsService } from './posts.service';
 
-@Controller('posts') // Note: if you have a global prefix, this maps to /api/v1/posts
+@Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
-  // 🟢 FIXED: Forcefully extracts the User ID directly from the Bearer token
   private extractUserId(req: any): string {
     // 1. If an AuthGuard successfully populated the user, use it.
     if (req?.user?.sub) return req.user.sub;
@@ -42,11 +41,10 @@ export class PostsController {
     return this.postsService.getFeed(type || 'recent', userId, pageNum);
   }
 
-  // 🟢 NEW: Submit Post Route (with Multer file upload handling)
   @Post('submit')
-  @UseInterceptors(FilesInterceptor('images', 10)) // Max 10 images
+  @UseInterceptors(FilesInterceptor('images', 10))
   async submitPost(
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files: any[], // 🟢 FIXED: Removed Express.Multer strict typing
     @Body() body: any,
     @Req() req: any
   ) {
@@ -56,7 +54,6 @@ export class PostsController {
       throw new UnauthorizedException('Please login to create a post.');
     }
 
-    // Passes the extracted userId, files, and form data directly to your service
     return await this.postsService.createPost(body, files, userId);
   }
 
