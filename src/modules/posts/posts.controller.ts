@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, Query, Req } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Req, UseInterceptors, UploadedFiles, Body, UnauthorizedException } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { PostsService } from './posts.service';
 
-@Controller('posts')
+@Controller('posts') // Note: if you have a global prefix, this maps to /api/v1/posts
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
@@ -39,6 +40,24 @@ export class PostsController {
     const pageNum = parseInt(page, 10) || 1;
     const userId = this.extractUserId(req);
     return this.postsService.getFeed(type || 'recent', userId, pageNum);
+  }
+
+  // 🟢 NEW: Submit Post Route (with Multer file upload handling)
+  @Post('submit')
+  @UseInterceptors(FilesInterceptor('images', 10)) // Max 10 images
+  async submitPost(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body() body: any,
+    @Req() req: any
+  ) {
+    const userId = this.extractUserId(req);
+    
+    if (!userId) {
+      throw new UnauthorizedException('Please login to create a post.');
+    }
+
+    // Passes the extracted userId, files, and form data directly to your service
+    return await this.postsService.createPost(body, files, userId);
   }
 
   @Post(':id/like')
