@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post } from './schema/post.schema';
 import { User } from '../users/schema/user.schema';
 import { Featured } from './schema/featured.schema';
+import { v2 as cloudinary } from 'cloudinary';
 
 @Injectable()
 export class PostsService {
@@ -11,15 +12,73 @@ export class PostsService {
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Featured.name) private readonly featuredModel: Model<Featured>,
-  ) {}
+  ) {
+    // 🟢 NEW: Configure Cloudinary for the upload feature
+    cloudinary.config({ 
+      cloud_name: process.env.CLOUDINARY_NAME, 
+      api_key: process.env.CLOUDINARY_KEY, 
+      api_secret: process.env.CLOUDINARY_SECRET 
+    });
+  }
 
-  // 🟢 UNIVERSAL FORMATTER: Ensures all routes format images, likes, and saves perfectly
+  // 🟢 NEW: The Create Post method handling Cloudinary uploads
+  async createPost(body: any, files: Express.Multer.File[], userId: string) {
+    const { post_type, data } = body;
+    
+    if (!post_type || !data) {
+      throw new BadRequestException("Post type and content are required.");
+    }
+
+    const userObjectId = new Types.ObjectId(userId);
+    const currentUser: any = await this.userModel.findById(userObjectId).lean();
+
+    if (!currentUser) {
+      throw new BadRequestException("User not found.");
+    }
+
+    let imageurls = [];
+    if (files && files.length > 0) {
+      for (const file of files) {
+        const result = await new Promise((resolve, reject) => {
+          cloudinary.uploader.upload_stream({ resource_type: 'image' }, (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }).end(file.buffer);
+        });
+        imageurls.push((result as any).secure_url);
+      }
+    }
+
+    const postData = {
+      ...body,
+      postType: post_type,
+      userId: currentUser._id,
+      username: currentUser.username,
+      picture: currentUser.picture,
+      imageurl: imageurls,
+      status: "APPROVED",
+      likes: 0,
+      saves: 0,
+      likedBy: [],
+      savedBy: [],
+      sharedBy: []
+    };
+
+    const newPost = new this.postModel(postData);
+    await newPost.save();
+
+    await this.userModel.findByIdAndUpdate(userObjectId, {
+      $inc: { postCount: 1 }
+    });
+
+    return { success: true, message: "Post created successfully" };
+  }
+
+  // 🟢 EXISTING: Universal Formatter
   private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
-    // 1. Safely extract arrays (fallback to empty array if missing)
     const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
-    // 2. Safely resolve images from your specific database fields
     const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
       ? post.images 
       : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
@@ -32,11 +91,8 @@ export class PostsService {
         name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
         picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
       },
-      // 3. Fallback to calculating the array length if the number field gets out of sync
       likesCount: typeof post.likes === 'number' ? post.likes : likesArray.length,
       savesCount: typeof post.saves === 'number' ? post.saves : savesArray.length,
-      
-      // 4. Determine if the current user has interacted with this post
       isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
       isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
                             userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
@@ -109,7 +165,6 @@ export class PostsService {
     const hasLiked = likesArray.some((id: any) => id.toString() === userObjectId.toString());
 
     if (hasLiked) {
-      // 🟢 User un-likes: Pull ID from array and subtract 1 from count
       await this.postModel.updateOne(
         { _id: postObjectId }, 
         { 
@@ -119,7 +174,6 @@ export class PostsService {
       );
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { likedPosts: postObjectId } });
     } else {
-      // 🟢 User likes: Add ID to array and add 1 to count
       await this.postModel.updateOne(
         { _id: postObjectId }, 
         { 
@@ -145,7 +199,6 @@ export class PostsService {
     const isSaved = savesArray.some((id: any) => id.toString() === userObjectId.toString());
 
     if (isSaved) {
-      // 🟢 User un-saves
       await this.postModel.updateOne(
         { _id: postObjectId }, 
         { 
@@ -155,7 +208,6 @@ export class PostsService {
       );
       await this.userModel.updateOne({ _id: userObjectId }, { $pull: { savedPosts: postObjectId } });
     } else {
-      // 🟢 User saves
       await this.postModel.updateOne(
         { _id: postObjectId }, 
         { 
@@ -173,7 +225,6 @@ export class PostsService {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = userId ? new Types.ObjectId(userId) : new Types.ObjectId();
     
-    // We can assume share tracking is just appending an ID to an array
     await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
     
     return this.getNormalizedPostForUser(postId, userId || '');
