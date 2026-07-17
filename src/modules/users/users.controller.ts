@@ -1,21 +1,21 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@Controller('auth') // With your main.ts setup, this maps to /api/v1/auth
+@Controller('auth')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Get('profile') // This makes the full path /api/v1/auth/profile
+  @Get('profile')
   @UseGuards(JwtAuthGuard)
   async getProfile(@Req() req: any) {
-    // Ensure req.user exists from the JwtAuthGuard
-    if (!req.user || !req.user.userId) {
-      throw new Error("User ID not found in request");
+    // 🟢 Safe extraction: matches the object returned by JwtStrategy
+    const userId = req.user?.userId;
+    
+    if (!userId) {
+      throw new UnauthorizedException('Authentication session expired or invalid.');
     }
     
-    const user = await this.usersService.findOneById(req.user.userId);
-    console.log("DEBUG: Backend returning:", user); 
-    return user; 
+    return await this.usersService.findOneById(userId);
   }
 }
