@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { User, UserDocument } from '../users/schema/user.schema';// 🟢 Adjusted safe module mapping path location
+import { User, UserDocument } from '../users/schema/user.schema';
 import { JwtService } from '@nestjs/jwt';
 import { v4 as uuidv4 } from 'uuid';
 import * as bcrypt from 'bcrypt';
@@ -13,7 +13,6 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  // Standard email/password credential login
   async login(loginDto: any, req: any) {
     const { email, password } = loginDto;
 
@@ -40,7 +39,8 @@ export class AuthService {
       { $push: { activeSessions: currentSession } }
     );
 
-    const payload = { userId: user._id, email: user.email, sessionId: currentSession.sessionId };
+    // 🟢 FIXED: Using 'sub' for the user ID to align with standard JWT practices
+    const payload = { sub: user._id, email: user.email, sessionId: currentSession.sessionId };
 
     return {
       token: this.jwtService.sign(payload),
@@ -48,14 +48,12 @@ export class AuthService {
     };
   }
 
-  // 🟢 FIXED: Re-implemented Google Passport validation target method matching your controller line 26
   async validateGoogleUser(googleProfile: any) {
     const { email, name, picture } = googleProfile;
     
     let user = await this.userModel.findOne({ email });
     
     if (!user) {
-      // Form new database doc layout if entry is missing
       const result = await this.userModel.create({
         name,
         email,
@@ -80,7 +78,8 @@ export class AuthService {
       { $push: { activeSessions: currentSession } }
     );
 
-    const payload = { userId: user._id, email: user.email, sessionId: currentSession.sessionId };
+    // 🟢 FIXED: Using 'sub' for the user ID to align with standard JWT practices
+    const payload = { sub: user._id, email: user.email, sessionId: currentSession.sessionId };
 
     return {
       token: this.jwtService.sign(payload),
