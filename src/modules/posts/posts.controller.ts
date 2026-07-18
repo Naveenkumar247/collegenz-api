@@ -41,6 +41,16 @@ export class PostsController {
     return this.postsService.getFeed(type || 'recent', userId, pageNum);
   }
 
+  // 🟢 NEW: Get saved events (MUST be placed before /:id routes to prevent routing conflicts)
+  @Get('saved-events')
+  async getSavedEvents(@Req() req: any) {
+    const userId = this.extractUserId(req);
+    if (!userId) {
+      throw new UnauthorizedException('Please login to view saved events.');
+    }
+    return this.postsService.getSavedEvents(userId);
+  }
+
   @Post('submit')
   @UseInterceptors(FilesInterceptor('images', 10))
   async submitPost(
@@ -73,6 +83,19 @@ export class PostsController {
   ) {
     const userId = this.extractUserId(req);
     return this.postsService.toggleSavePost(postId, userId);
+  }
+
+  // 🟢 NEW: Toggle save state specifically for events
+  @Post(':id/save-event')
+  async toggleSaveEvent(
+    @Param('id') postId: string,
+    @Req() req: any,
+  ) {
+    const userId = this.extractUserId(req);
+    if (!userId) {
+      throw new UnauthorizedException('Please login to save events.');
+    }
+    return this.postsService.toggleSaveEvent(postId, userId);
   }
 
   @Post(':id/share')
