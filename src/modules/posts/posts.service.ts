@@ -219,6 +219,62 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
+  // 🟢 NEW: Dedicated toggle for saving events
+  async toggleSaveEvent(postId: string, userId: string): Promise<any> {
+    if (!postId || !userId) throw new NotFoundException('Invalid arguments');
+    const postObjectId = new Types.ObjectId(postId);
+    const userObjectId = new Types.ObjectId(userId);
+
+    const post: any = await this.postModel.findById(postObjectId);
+    if (!post) throw new NotFoundException('Post not found');
+
+    // Strict enforcement: Ensure the post is actually an event
+    if (post.postType !== 'event') {
+      throw new BadRequestException('Only events can be saved to your events calendar.');
+    }
+
+    const user: any = await this.userModel.findById(userObjectId);
+    if (!user) throw new NotFoundException('User not found');
+
+    const savedEventsArray = Array.isArray(user.savedEvents) ? user.savedEvents : [];
+    const isSaved = savedEventsArray.some((id: any) => id.toString() === postObjectId.toString());
+
+    if (isSaved) {
+      await this.userModel.updateOne(
+        { _id: userObjectId },
+        { $pull: { savedEvents: postObjectId } }
+      );
+      return { message: 'Event removed from saved list', isSaved: false };
+    } else {
+      await this.userModel.updateOne(
+        { _id: userObjectId },
+        { $addToSet: { savedEvents: postObjectId } }
+      );
+      return { message: 'Event saved successfully', isSaved: true };
+    }
+  }
+
+  // 🟢 NEW: Retrieve all saved events for a user
+  async getSavedEvents(userId: string): Promise<any[]> {
+    if (!userId) throw new BadRequestException('User ID is required');
+    const userObjectId = new Types.ObjectId(userId);
+
+    const user: any = await this.userModel.findById(userObjectId)
+      .populate({
+        path: 'savedEvents',
+        match: { postType: 'event' }, // Fallback filter during population
+        options: { sort: { createdAt: -1 } }
+      })
+      .lean();
+
+    if (!user || !user.savedEvents) {
+      return [];
+    }
+
+    // Return the formatted posts
+    return user.savedEvents.map((event: any) => this.formatPost(event, userId));
+  }
+
   async trackSharePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
     const userObjectId = userId ? new Types.ObjectId(userId) : new Types.ObjectId();
@@ -242,5 +298,4 @@ export class PostsService {
 
     return this.formatPost(post, userId, userSavedPosts);
   }
-      }
-        
+}
