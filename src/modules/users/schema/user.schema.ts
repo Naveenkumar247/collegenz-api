@@ -80,6 +80,11 @@ export class User {
   })
   savedPosts: any[];
 
+  // 🟢 ADDED: Event Reminder Saver
+  // References the Post collection strictly to isolate event bookmarks
+  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: 'Post' }], default: [] })
+  savedEvents: MongooseSchema.Types.ObjectId[];
+
   @Prop({ default: 0 })
   points: number;
 
@@ -112,28 +117,6 @@ export class User {
 
   @Prop({ type: String, enum: ['user', 'intern', 'mentor'], default: 'user' })
   zrole: string;
-
-  @Prop({
-    type: [
-      {
-        companyName: { type: String, default: 'CodeAlpha' },
-        status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
-        startDate: { type: String, default: '09.06.2026' },
-        endDate: { type: String, default: '09.07.2026' },
-        deadlineDate: { type: String, default: '09.08.2026' },
-        progress: { type: Number, default: 50 },
-        noOfTask: { type: Number, default: 4 },
-        noOfCompletedTask: { type: Number, default: 2 },
-        noOfPendingTask: { type: Number, default: 2 },
-        nameOfMentor: { type: String, default: 'Amir' },
-        noOfStudents: { type: Number, default: 44 },
-        noOfTaskAssigned: { type: Number, default: 2 },
-        noOfTaskPending: { type: Number, default: 2 },
-      },
-    ],
-    default: [],
-  })
-  internshipProfiles: any[];
 
   // 🟢 PERSISTENCE UPGRADE: Track all active device connections directly inside the MongoDB cluster
   @Prop({
