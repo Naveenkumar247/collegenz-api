@@ -7,7 +7,7 @@ import * as compression from 'compression';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. Security Headers (🟢 FIXED: Modified cross-origin policies to stop blocking Vercel)
+  // 1. Security Headers
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -15,35 +15,54 @@ async function bootstrap() {
     }),
   );
 
-  // 2. Global CORS Configuration (Optimized for React Client requests)
+  // 2. Global CORS Configuration (🟢 FIXED: Prevents CORS breakdown with credentials)
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : '*',
+    origin: (origin, callback) => {
+      const envOrigins = process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+        : [];
+
+      const allowedOrigins = [
+        'https://collegenz.in',
+        'https://www.collegenz.in',
+        'http://localhost:3000',
+        'http://localhost:5173',
+        ...envOrigins,
+      ];
+
+      // Allow requests with no origin (mobile apps, server-to-server)
+      // or allowed domains / Vercel previews (*.vercel.app)
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Accept, Authorization',
   });
 
   // 3. Performance Optimization (Gzip compression)
   app.use(compression());
 
-  // 4. API Versioning Control (e.g., /api/v1/posts)
+  // 4. API Versioning Control (/api/v1/...)
   app.setGlobalPrefix('api');
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
   });
 
-  // 5. Enterprise-grade Request Body Validation
+  // 5. Request Body Validation (🟢 FIXED: Set whitelist to false if using raw @Body() body: any)
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true,         // Strips away payload properties not explicitly defined in DTOs
-      transform: true,         // Automatically transforms payloads to match expected TS types
-      forbidNonWhitelisted: true,
+      whitelist: false, // Prevents NestJS from wiping @Body() payloads when DTO classes are not used
+      transform: true,
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 10000;
   
-  // Bind the network listener across the container threshold
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 CollegenZ API core running on: http://0.0.0.0:${port}/api/v1`);
 }
