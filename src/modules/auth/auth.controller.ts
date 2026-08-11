@@ -17,19 +17,21 @@ export class AuthController {
   async googleAuth(@Req() req: any) {}
 
   // 2. GET /api/v1/auth/google/callback
-  @Get('google/callback')
-  @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
-    const result = await this.authService.validateGoogleUser(req.user);
+@Get('google/callback')
+@UseGuards(AuthGuard('google'))
+async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
+  const result = await this.authService.validateGoogleUser(req.user);
 
-    // 🟢 Fallback to your Vercel frontend domain if environment variable is missing
-    const rawFrontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'https://collegenz.in';
+  let frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://collegenz.in';
 
-    // Remove any trailing slash to prevent double-slashes (e.g. collegenz.in//login)
-    const frontendUrl = rawFrontendUrl.replace(/\/$/, '');
-
-    // Redirect straight to Vercel with the generated token
-    return res.redirect(`${frontendUrl}/login?token=${result.token}`);
+  // Ensure frontendUrl starts with protocol to prevent Express relative-path redirects
+  if (!frontendUrl.startsWith('http://') && !frontendUrl.startsWith('https://')) {
+    frontendUrl = `https://${frontendUrl}`;
   }
+
+  frontendUrl = frontendUrl.replace(/\/$/, '');
+
+  return res.redirect(`${frontendUrl}/login?token=${result.token}`);
+}
+  
 }
