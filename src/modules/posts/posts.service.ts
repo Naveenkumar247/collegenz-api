@@ -20,7 +20,6 @@ export class PostsService {
     });
   }
 
-  // 🟢 FIXED: Removed Express.Multer strict typing
   async createPost(body: any, files: any[], userId: string) {
     const { post_type, data } = body;
     
@@ -73,13 +72,13 @@ export class PostsService {
     return { success: true, message: "Post created successfully" };
   }
 
-  private formatPost(post: any, userId: string, userSavedPosts: any[] = []) {
+  private formatPost(post: any, userId?: string, userSavedPosts: any[] = []) {
     const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
     const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
       ? post.images 
-      : (post.imageurl ? [post.imageurl] : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+      : (post.imageurl ? (Array.isArray(post.imageurl) ? post.imageurl : [post.imageurl]) : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
 
     return {
       ...post,
@@ -124,7 +123,8 @@ export class PostsService {
     }
   }
 
-  async getFeatured(): Promise<any[]> {
+  // 🟢 FIXED: Added optional userId argument to prevent TS2554 build error
+  async getFeatured(userId?: string): Promise<any[]> {
     try {
       const rawFeatured = await this.featuredModel
         .find()
@@ -136,19 +136,38 @@ export class PostsService {
         return [];
       }
 
-      return rawFeatured.map((feat: any) => ({
-        ...feat,
-        content: feat.data || feat.caption || '', 
-        images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : []), 
-        author: {
-          name: feat.username || 'Anonymous User',
-          picture: feat.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+      let userSavedPosts: any[] = [];
+      if (userId && Types.ObjectId.isValid(userId)) {
+        const user: any = await this.userModel.findById(userId).lean();
+        if (user && Array.isArray(user.savedPosts)) {
+          userSavedPosts = user.savedPosts;
         }
-      }));
+      }
+
+      return rawFeatured.map((feat: any) => {
+        const formatted = this.formatPost(feat, userId, userSavedPosts);
+        return {
+          ...formatted,
+          content: feat.data || feat.caption || feat.content || '', 
+          images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : formatted.images), 
+          author: {
+            name: feat.username || feat.author?.name || 'Anonymous User',
+            picture: feat.picture || feat.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+          }
+        };
+      });
     } catch (error) {
       console.error('🚨 Failed to fetch featured posts:', error);
       return [];
     }
+  }
+
+  // 🟢 FIXED: Implemented missing getPostById method to resolve TS2339 build error
+  async getPostById(postId: string, userId?: string): Promise<any> {
+    if (!postId || !Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
+    return this.getNormalizedPostForUser(postId, userId || '');
   }
 
   async toggleLikePost(postId: string, userId: string): Promise<any> {
@@ -219,7 +238,6 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
-  // 🟢 NEW: Dedicated toggle for saving events
   async toggleSaveEvent(postId: string, userId: string): Promise<any> {
     if (!postId || !userId) throw new NotFoundException('Invalid arguments');
     const postObjectId = new Types.ObjectId(postId);
@@ -228,7 +246,6 @@ export class PostsService {
     const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
-    // Strict enforcement: Ensure the post is actually an event
     if (post.postType !== 'event') {
       throw new BadRequestException('Only events can be saved to your events calendar.');
     }
@@ -254,7 +271,6 @@ export class PostsService {
     }
   }
 
-  // 🟢 NEW: Retrieve all saved events for a user
   async getSavedEvents(userId: string): Promise<any[]> {
     if (!userId) throw new BadRequestException('User ID is required');
     const userObjectId = new Types.ObjectId(userId);
@@ -262,7 +278,7 @@ export class PostsService {
     const user: any = await this.userModel.findById(userObjectId)
       .populate({
         path: 'savedEvents',
-        match: { postType: 'event' }, // Fallback filter during population
+        match: { postType: 'event' },
         options: { sort: { createdAt: -1 } }
       })
       .lean();
@@ -271,20 +287,22 @@ export class PostsService {
       return [];
     }
 
-    // Return the formatted posts
     return user.savedEvents.map((event: any) => this.formatPost(event, userId));
   }
 
   async trackSharePost(postId: string, userId: string): Promise<any> {
     const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = userId ? new Types.ObjectId(userId) : new Types.ObjectId();
+    const userObjectId = userId && Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : new Types.ObjectId();
     
     await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
     
     return this.getNormalizedPostForUser(postId, userId || '');
   }
 
-  private async getNormalizedPostForUser(postId: string, userId: string) {
+  private async getNormalizedPostForUser(postId: string, userId?: string) {
+    if (!postId || !Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
     const post: any = await this.postModel.findById(postId).lean();
     if (!post) throw new NotFoundException('Post not found');
 
