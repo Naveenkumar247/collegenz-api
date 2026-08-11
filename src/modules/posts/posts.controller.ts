@@ -25,11 +25,14 @@ export class PostsController {
     return '';
   }
 
+  // 🟢 PUBLIC: Anyone can view featured posts
   @Get('featured')
-  async getFeatured() {
-    return this.postsService.getFeatured();
+  async getFeatured(@Req() req: any) {
+    const userId = this.extractUserId(req); // Optional: returns '' for guests
+    return this.postsService.getFeatured(userId);
   }
 
+  // 🟢 PUBLIC: Anyone can view the post feed
   @Get('feed')
   async getFeed(
     @Query('type') type: string,
@@ -37,11 +40,11 @@ export class PostsController {
     @Req() req: any,
   ) {
     const pageNum = parseInt(page, 10) || 1;
-    const userId = this.extractUserId(req);
+    const userId = this.extractUserId(req); // Optional: returns '' for guests
     return this.postsService.getFeed(type || 'recent', userId, pageNum);
   }
 
-  // 🟢 NEW: Get saved events (MUST be placed before /:id routes to prevent routing conflicts)
+  // 🔒 PROTECTED: Only logged-in users can view saved events
   @Get('saved-events')
   async getSavedEvents(@Req() req: any) {
     const userId = this.extractUserId(req);
@@ -51,41 +54,58 @@ export class PostsController {
     return this.postsService.getSavedEvents(userId);
   }
 
+  // 🟢 PUBLIC: Single post lookup (Placed before parameterized actions)
+  @Get(':id')
+  async getPostById(
+    @Param('id') postId: string,
+    @Req() req: any,
+  ) {
+    const userId = this.extractUserId(req); // Optional: returns '' for guests
+    return this.postsService.getPostById(postId, userId);
+  }
+
+  // 🔒 PROTECTED: Submit post
   @Post('submit')
   @UseInterceptors(FilesInterceptor('images', 10))
   async submitPost(
-    @UploadedFiles() files: any[], // 🟢 FIXED: Removed Express.Multer strict typing
+    @UploadedFiles() files: any[],
     @Body() body: any,
     @Req() req: any
   ) {
     const userId = this.extractUserId(req);
-    
     if (!userId) {
       throw new UnauthorizedException('Please login to create a post.');
     }
-
     return await this.postsService.createPost(body, files, userId);
   }
 
+  // 🔒 PROTECTED: Toggle Like
   @Post(':id/like')
   async toggleLikePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
     const userId = this.extractUserId(req);
+    if (!userId) {
+      throw new UnauthorizedException('Please login to like posts.');
+    }
     return this.postsService.toggleLikePost(postId, userId);
   }
 
+  // 🔒 PROTECTED: Toggle Save
   @Post(':id/save')
   async toggleSavePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
     const userId = this.extractUserId(req);
+    if (!userId) {
+      throw new UnauthorizedException('Please login to save posts.');
+    }
     return this.postsService.toggleSavePost(postId, userId);
   }
 
-  // 🟢 NEW: Toggle save state specifically for events
+  // 🔒 PROTECTED: Save Event
   @Post(':id/save-event')
   async toggleSaveEvent(
     @Param('id') postId: string,
@@ -98,6 +118,7 @@ export class PostsController {
     return this.postsService.toggleSaveEvent(postId, userId);
   }
 
+  // 🟢 PUBLIC: Share tracking (Allows both guests and users to trigger share counts)
   @Post(':id/share')
   async trackSharePost(
     @Param('id') postId: string,
