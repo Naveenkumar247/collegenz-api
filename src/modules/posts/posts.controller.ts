@@ -7,23 +7,23 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   private extractUserId(req: any): string {
-    // 1. If an AuthGuard successfully populated the user, use it.
     if (req?.user?.sub) return req.user.sub;
     if (req?.user?.id) return req.user.id;
-    
-    // 2. Fallback: Manually decode the JWT from the headers
-    const authHeader = req?.headers?.authorization;
+  
+  const authHeader = req?.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      try {
-        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-        return payload.sub || payload.id || payload._id || '';
-      } catch (e) {
-        return '';
-      }
+         try {
+      // 'base64url' properly handles JWT URL-safe base64 strings
+           const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8'));
+           return payload.sub || payload.id || payload._id || '';
+    } catch (e) {
+      return '';
     }
-    return '';
   }
+  return '';
+}
+  
 
   // 🟢 PUBLIC: Anyone can view featured posts
   @Get('featured')
