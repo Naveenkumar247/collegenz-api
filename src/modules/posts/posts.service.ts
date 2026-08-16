@@ -25,7 +25,7 @@ export class PostsService {
     });
   }
 
-  // Helper to ensure user is authenticated for write/interaction actions
+  // 🛠️ Helper: Enforce valid user ObjectId
   private requireAuthUser(userId?: string): Types.ObjectId {
     if (!userId || !Types.ObjectId.isValid(userId)) {
       throw new UnauthorizedException('You must be signed in to perform this action.');
@@ -36,9 +36,12 @@ export class PostsService {
   // 🔒 AUTH REQUIRED: Create Post
   async createPost(body: any, files: any[], userId: string) {
     const userObjectId = this.requireAuthUser(userId);
-    const { post_type, data } = body;
     
-    if (!post_type || !data) {
+    // Accept either camelCase or snake_case key from frontend forms
+    const postType = body.postType || body.post_type;
+    const contentData = body.data || body.content || body.caption;
+
+    if (!postType || !contentData) {
       throw new BadRequestException("Post type and content are required.");
     }
 
@@ -47,9 +50,10 @@ export class PostsService {
       throw new NotFoundException("User account not found.");
     }
 
-    let imageurls = [];
+    let imageurls: string[] = [];
     if (files && files.length > 0) {
       for (const file of files) {
+        if (!file.buffer) continue;
         const result = await new Promise((resolve, reject) => {
           cloudinary.uploader.upload_stream({ resource_type: 'image' }, (error, result) => {
             if (error) reject(error);
@@ -62,11 +66,13 @@ export class PostsService {
 
     const postData = {
       ...body,
-      postType: post_type,
+      postType: postType,
+      data: contentData,
       userId: currentUser._id,
       username: currentUser.username,
       picture: currentUser.picture,
       imageurl: imageurls,
+      images: imageurls,
       status: "APPROVED",
       likes: 0,
       saves: 0,
@@ -85,7 +91,10 @@ export class PostsService {
     return { success: true, message: "Post created successfully" };
   }
 
+  // 🛠️ Helper: Safe post formatter with complete null checks
   private formatPost(post: any, userId?: string, userSavedPosts: any[] = []) {
+    if (!post) return null;
+
     const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
@@ -103,20 +112,26 @@ export class PostsService {
       },
       likesCount: typeof post.likes === 'number' ? post.likes : likesArray.length,
       savesCount: typeof post.saves === 'number' ? post.saves : savesArray.length,
-      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id.toString() === userId.toString()) : false,
-      isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id.toString() === userId.toString()) || 
-                            userSavedPosts.some((id: any) => id.toString() === post._id.toString())) : false,
+      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id?.toString() === userId.toString()) : false,
+      isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id?.toString() === userId.toString()) || 
+                            userSavedPosts.some((id: any) => id?.toString() === post._id?.toString())) : false,
     };
   }
 
-  // 🌐 PUBLIC ACCESS: View Feed (userId is optional)
+  // 🌐 PUBLIC ACCESS: View Feed with type filtering
   async getFeed(type: string, userId: string | undefined, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
 
+    // Apply query filters according to requested feed type
+    const queryFilter: any = {};
+    if (type && type !== 'recent' && type !== 'all') {
+      queryFilter.postType = type;
+    }
+
     try {
       const rawPosts = await this.postModel
-        .find()
+        .find(queryFilter)
         .sort({ _id: -1 })
         .skip(skip)
         .limit(limit)
@@ -130,14 +145,16 @@ export class PostsService {
         }
       }
 
-      return rawPosts.map((post: any) => this.formatPost(post, userId, userSavedPosts));
+      return rawPosts
+        .map((post: any) => this.formatPost(post, userId, userSavedPosts))
+        .filter((post: any) => post !== null);
     } catch (error) {
-      console.error('🚨 Crash caught inside getFeed service:', error);
+      console.error('🚨 Error inside getFeed service:', error);
       return [];
     }
   }
 
-  // 🌐 PUBLIC ACCESS: View Featured (userId is optional)
+  // 🌐 PUBLIC ACCESS: View Featured
   async getFeatured(userId?: string): Promise<any[]> {
     try {
       const rawFeatured = await this.featuredModel
@@ -158,25 +175,28 @@ export class PostsService {
         }
       }
 
-      return rawFeatured.map((feat: any) => {
-        const formatted = this.formatPost(feat, userId, userSavedPosts);
-        return {
-          ...formatted,
-          content: feat.data || feat.caption || feat.content || '', 
-          images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : formatted.images), 
-          author: {
-            name: feat.username || feat.author?.name || 'Anonymous User',
-            picture: feat.picture || feat.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
-          }
-        };
-      });
+      return rawFeatured
+        .map((feat: any) => {
+          const formatted = this.formatPost(feat, userId, userSavedPosts);
+          if (!formatted) return null;
+          return {
+            ...formatted,
+            content: feat.data || feat.caption || feat.content || '', 
+            images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : formatted.images), 
+            author: {
+              name: feat.username || feat.author?.name || 'Anonymous User',
+              picture: feat.picture || feat.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
+            }
+          };
+        })
+        .filter((item: any) => item !== null);
     } catch (error) {
       console.error('🚨 Failed to fetch featured posts:', error);
       return [];
     }
   }
 
-  // 🌐 PUBLIC ACCESS: View Single Post (userId is optional)
+  // 🌐 PUBLIC ACCESS: View Single Post
   async getPostById(postId: string, userId?: string): Promise<any> {
     if (!postId || !Types.ObjectId.isValid(postId)) {
       throw new BadRequestException('Invalid post ID');
@@ -288,7 +308,7 @@ export class PostsService {
     }
   }
 
-  // 🔒 AUTH REQUIRED: Get Saved Events
+  // 🔒 AUTH REQUIRED: Get Saved Events (safely filters out null populated entries)
   async getSavedEvents(userId: string): Promise<any[]> {
     const userObjectId = this.requireAuthUser(userId);
 
@@ -300,14 +320,17 @@ export class PostsService {
       })
       .lean();
 
-    if (!user || !user.savedEvents) {
+    if (!user || !Array.isArray(user.savedEvents)) {
       return [];
     }
 
-    return user.savedEvents.map((event: any) => this.formatPost(event, userId));
+    return user.savedEvents
+      .filter((event: any) => event !== null && typeof event === 'object')
+      .map((event: any) => this.formatPost(event, userId))
+      .filter((event: any) => event !== null);
   }
 
-  // 🌐 PUBLIC / HYBRID: Track Share (userId optional)
+  // 🌐 PUBLIC / HYBRID: Track Share
   async trackSharePost(postId: string, userId?: string): Promise<any> {
     if (!postId || !Types.ObjectId.isValid(postId)) {
       throw new BadRequestException('Invalid post ID');
