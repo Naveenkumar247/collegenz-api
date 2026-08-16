@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { 
+  Injectable, 
+  NotFoundException, 
+  BadRequestException, 
+  UnauthorizedException 
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Post } from './schema/post.schema';
@@ -20,18 +25,26 @@ export class PostsService {
     });
   }
 
+  // Helper to ensure user is authenticated for write/interaction actions
+  private requireAuthUser(userId?: string): Types.ObjectId {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      throw new UnauthorizedException('You must be signed in to perform this action.');
+    }
+    return new Types.ObjectId(userId);
+  }
+
+  // 🔒 AUTH REQUIRED: Create Post
   async createPost(body: any, files: any[], userId: string) {
+    const userObjectId = this.requireAuthUser(userId);
     const { post_type, data } = body;
     
     if (!post_type || !data) {
       throw new BadRequestException("Post type and content are required.");
     }
 
-    const userObjectId = new Types.ObjectId(userId);
     const currentUser: any = await this.userModel.findById(userObjectId).lean();
-
     if (!currentUser) {
-      throw new BadRequestException("User not found.");
+      throw new NotFoundException("User account not found.");
     }
 
     let imageurls = [];
@@ -96,7 +109,8 @@ export class PostsService {
     };
   }
 
-  async getFeed(type: string, userId: string, pageNum: number): Promise<any[]> {
+  // 🌐 PUBLIC ACCESS: View Feed (userId is optional)
+  async getFeed(type: string, userId: string | undefined, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
 
@@ -123,7 +137,7 @@ export class PostsService {
     }
   }
 
-  // 🟢 FIXED: Added optional userId argument to prevent TS2554 build error
+  // 🌐 PUBLIC ACCESS: View Featured (userId is optional)
   async getFeatured(userId?: string): Promise<any[]> {
     try {
       const rawFeatured = await this.featuredModel
@@ -162,19 +176,20 @@ export class PostsService {
     }
   }
 
-  // 🟢 FIXED: Implemented missing getPostById method to resolve TS2339 build error
+  // 🌐 PUBLIC ACCESS: View Single Post (userId is optional)
   async getPostById(postId: string, userId?: string): Promise<any> {
     if (!postId || !Types.ObjectId.isValid(postId)) {
       throw new BadRequestException('Invalid post ID');
     }
-    return this.getNormalizedPostForUser(postId, userId || '');
+    return this.getNormalizedPostForUser(postId, userId);
   }
 
+  // 🔒 AUTH REQUIRED: Toggle Like
   async toggleLikePost(postId: string, userId: string): Promise<any> {
-    if (!postId || !userId) throw new NotFoundException('Invalid arguments');
-    const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = this.requireAuthUser(userId);
+    if (!postId || !Types.ObjectId.isValid(postId)) throw new BadRequestException('Invalid post ID');
 
+    const postObjectId = new Types.ObjectId(postId);
     const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
@@ -204,11 +219,12 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
+  // 🔒 AUTH REQUIRED: Toggle Save
   async toggleSavePost(postId: string, userId: string): Promise<any> {
-    if (!postId || !userId) throw new NotFoundException('Invalid arguments');
-    const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = this.requireAuthUser(userId);
+    if (!postId || !Types.ObjectId.isValid(postId)) throw new BadRequestException('Invalid post ID');
 
+    const postObjectId = new Types.ObjectId(postId);
     const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
@@ -238,11 +254,12 @@ export class PostsService {
     return this.getNormalizedPostForUser(postId, userId);
   }
 
+  // 🔒 AUTH REQUIRED: Save Event
   async toggleSaveEvent(postId: string, userId: string): Promise<any> {
-    if (!postId || !userId) throw new NotFoundException('Invalid arguments');
-    const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = this.requireAuthUser(userId);
+    if (!postId || !Types.ObjectId.isValid(postId)) throw new BadRequestException('Invalid post ID');
 
+    const postObjectId = new Types.ObjectId(postId);
     const post: any = await this.postModel.findById(postObjectId);
     if (!post) throw new NotFoundException('Post not found');
 
@@ -271,9 +288,9 @@ export class PostsService {
     }
   }
 
+  // 🔒 AUTH REQUIRED: Get Saved Events
   async getSavedEvents(userId: string): Promise<any[]> {
-    if (!userId) throw new BadRequestException('User ID is required');
-    const userObjectId = new Types.ObjectId(userId);
+    const userObjectId = this.requireAuthUser(userId);
 
     const user: any = await this.userModel.findById(userObjectId)
       .populate({
@@ -290,13 +307,20 @@ export class PostsService {
     return user.savedEvents.map((event: any) => this.formatPost(event, userId));
   }
 
-  async trackSharePost(postId: string, userId: string): Promise<any> {
+  // 🌐 PUBLIC / HYBRID: Track Share (userId optional)
+  async trackSharePost(postId: string, userId?: string): Promise<any> {
+    if (!postId || !Types.ObjectId.isValid(postId)) {
+      throw new BadRequestException('Invalid post ID');
+    }
+
     const postObjectId = new Types.ObjectId(postId);
-    const userObjectId = userId && Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : new Types.ObjectId();
     
-    await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
+    if (userId && Types.ObjectId.isValid(userId)) {
+      const userObjectId = new Types.ObjectId(userId);
+      await this.postModel.updateOne({ _id: postObjectId }, { $addToSet: { sharedBy: userObjectId } });
+    }
     
-    return this.getNormalizedPostForUser(postId, userId || '');
+    return this.getNormalizedPostForUser(postId, userId);
   }
 
   private async getNormalizedPostForUser(postId: string, userId?: string) {
