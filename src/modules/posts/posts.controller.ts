@@ -8,7 +8,9 @@ import {
   UseInterceptors, 
   UploadedFiles, 
   Body, 
-  UnauthorizedException 
+  UnauthorizedException,
+  DefaultValuePipe,
+  ParseIntPipe
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { PostsService } from './posts.service';
@@ -17,11 +19,12 @@ import { PostsService } from './posts.service';
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
-  // 🛠️ Helper: Optional extraction for public/guest-friendly endpoints
+  // 🛠️ Helper: Extract user ID safely across all standard JWT payload fields
   private extractUserId(req: any): string {
     if (req?.user?.sub) return req.user.sub;
     if (req?.user?.id) return req.user.id;
     if (req?.user?._id) return req.user._id.toString();
+    if (req?.user?.userId) return req.user.userId;
 
     const authHeader = req?.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -30,7 +33,7 @@ export class PostsController {
         const parts = token.split('.');
         if (parts.length === 3) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-          return payload.sub || payload.id || payload._id || '';
+          return payload.sub || payload.id || payload._id || payload.userId || '';
         }
       } catch {
         return '';
@@ -39,7 +42,7 @@ export class PostsController {
     return '';
   }
 
-  // 🛠️ Helper: Mandatory extraction for protected routes
+  // 🛠️ Helper: Enforce authentication for protected actions
   private requireUserId(req: any, message: string): string {
     const userId = this.extractUserId(req);
     if (!userId) {
@@ -48,26 +51,25 @@ export class PostsController {
     return userId;
   }
 
-  // 🌐 PUBLIC: View featured posts (Guest or Logged in)
+  // 🌐 PUBLIC: View featured posts
   @Get('featured')
   async getFeatured(@Req() req: any) {
     const userId = this.extractUserId(req);
     return this.postsService.getFeatured(userId);
   }
 
-  // 🌐 PUBLIC: View feed (Guest or Logged in)
+  // 🌐 PUBLIC: View feed (Uses NestJS ParseIntPipe for safe numeric parsing)
   @Get('feed')
   async getFeed(
-    @Query('type') type: string,
-    @Query('page') page: string,
+    @Query('type') type: string = 'recent',
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) pageNum: number,
     @Req() req: any,
   ) {
-    const pageNum = parseInt(page, 10) || 1;
     const userId = this.extractUserId(req);
-    return this.postsService.getFeed(type || 'recent', userId, pageNum);
+    return this.postsService.getFeed(type, userId, pageNum);
   }
 
-  // 🔒 PROTECTED: View saved events (Must be placed BEFORE @Get(':id'))
+  // 🔒 PROTECTED: View saved events (Must remain before @Get(':id'))
   @Get('saved-events')
   async getSavedEvents(@Req() req: any) {
     const userId = this.requireUserId(req, 'Please login to view saved events.');
@@ -126,7 +128,7 @@ export class PostsController {
     return this.postsService.toggleSaveEvent(postId, userId);
   }
 
-  // 🌐 PUBLIC/HYBRID: Share tracking
+  // 🌐 PUBLIC: Share tracking
   @Post(':id/share')
   async trackSharePost(
     @Param('id') postId: string,
