@@ -6,11 +6,20 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(configService: ConfigService) {
+    // Clean environment variables to remove surrounding quotes, spaces, and trailing newlines
+    const clientID = configService.get<string>('GOOGLE_CLIENT_ID')?.replace(/^["']|["']$/g, '').trim();
+    const clientSecret = configService.get<string>('GOOGLE_CLIENT_SECRET')?.replace(/^["']|["']$/g, '').trim();
+    let callbackURL = configService.get<string>('GOOGLE_CALLBACK_URL')?.replace(/^["']|["']$/g, '').trim();
+
+    // Force absolute URL format to prevent relative-path URL stacking
+    if (!callbackURL || !callbackURL.startsWith('http')) {
+      callbackURL = 'https://api.collegenz.in/api/v1/auth/google/callback';
+    }
+
     super({
-      // Adding explicit fallback string options prevents Passport initialization crashes
-      clientID: configService.get<string>('GOOGLE_CLIENT_ID') || 'TEMP_HOLDER_ID',
-      clientSecret: configService.get<string>('GOOGLE_CLIENT_SECRET') || 'TEMP_HOLDER_SECRET',
-      callbackURL: configService.get<string>('GOOGLE_CALLBACK_URL') || 'http://localhost:5000/api/v1/auth/google/callback',
+      clientID: clientID || 'TEMP_HOLDER_ID',
+      clientSecret: clientSecret || 'TEMP_HOLDER_SECRET',
+      callbackURL,
       scope: ['email', 'profile'],
     });
   }
@@ -23,10 +32,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   ): Promise<any> {
     const { name, emails, photos } = profile;
     const user = {
-      email: emails[0].value,
-      firstName: name.givenName,
-      lastName: name.familyName,
-      picture: photos[0].value,
+      email: emails?.[0]?.value,
+      firstName: name?.givenName || '',
+      lastName: name?.familyName || '',
+      picture: photos?.[0]?.value || '',
       accessToken,
     };
     done(null, user);
