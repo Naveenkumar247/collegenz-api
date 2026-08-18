@@ -13,7 +13,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
     // Force absolute URL format to prevent relative-path URL stacking
     if (!callbackURL || !callbackURL.startsWith('http')) {
-      callbackURL = 'https://api.collegenz.in/api/v1/auth/google/callback';
+      callbackURL = 'https://api.collegenz.in/api/v1/auth/google/callback/auth/google';
     }
 
     super({
