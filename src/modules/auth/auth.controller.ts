@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Req, Res } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
@@ -11,22 +11,33 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  // 1. GET /api/v1/auth/google
-  // Clicking this link redirects the browser straight to Google's Login screen
+  // 1. TRADITIONAL EMAIL/PASSWORD LOGIN
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  async login(@Body() body: any) {
+    // Calls your auth.service to validate credentials and issue JWT
+    return this.authService.login(body.email, body.password);
+  }
+
+  // 2. INITIATE GOOGLE OAUTH
   @Get('google')
   @UseGuards(AuthGuard('google'))
   async googleAuth(@Req() req) {}
 
-  // 2. GET /api/v1/auth/google/callback
-  // Google redirects users here. We log them in and forward them to the frontend with their token.
+  // 3. GOOGLE OAUTH CALLBACK
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req, @Res() res: Response) {
     const result = await this.authService.validateGoogleUser(req.user);
-    const frontendUrl = this.configService.get<string>('FRONTEND_URL');
     
-    // Send the token safely to the frontend via a URL query parameter
-return res.redirect(`${frontendUrl}/login?token=${result.token}`);
-    
+    // Clean and enforce absolute FRONTEND_URL to prevent path stacking
+    let frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://collegenz.in';
+    frontendUrl = frontendUrl.replace(/^["']|["']$/g, '').trim().replace(/\/$/, '');
+
+    if (!frontendUrl.startsWith('http://') && !frontendUrl.startsWith('https://')) {
+      frontendUrl = `https://${frontendUrl}`;
+    }
+
+    return res.redirect(`${frontendUrl}/login?token=${result.token}`);
   }
 }
