@@ -9,22 +9,36 @@ import {
   UploadedFiles, 
   Body, 
   UnauthorizedException,
+  BadRequestException,
+  NotFoundException,
   DefaultValuePipe,
-  ParseIntPipe
+  ParseIntPipe,
+  HttpCode,
+  HttpStatus
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { Types } from 'mongoose';
 import { PostsService } from './posts.service';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
-  // 🛠️ Helper: Extract user ID safely across all standard JWT payload fields
+  // 🛠️ Helper: Validate MongoDB ObjectId
+  private validateObjectId(id: string, paramName: string = 'Post ID'): void {
+    if (!id || !Types.ObjectId.isValid(id)) {
+      throw new BadRequestException(`Invalid ${paramName} format.`);
+    }
+  }
+
+  // 🛠️ Helper: Extract user ID safely across standard JWT payload fields
   private extractUserId(req: any): string {
-    if (req?.user?.sub) return req.user.sub;
-    if (req?.user?.id) return req.user.id;
-    if (req?.user?._id) return req.user._id.toString();
-    if (req?.user?.userId) return req.user.userId;
+    if (req?.user) {
+      if (req.user.sub) return String(req.user.sub);
+      if (req.user.id) return String(req.user.id);
+      if (req.user._id) return String(req.user._id);
+      if (req.user.userId) return String(req.user.userId);
+    }
 
     const authHeader = req?.headers?.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -33,7 +47,7 @@ export class PostsController {
         const parts = token.split('.');
         if (parts.length === 3) {
           const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
-          return payload.sub || payload.id || payload._id || payload.userId || '';
+          return String(payload.sub || payload.id || payload._id || payload.userId || '');
         }
       } catch {
         return '';
@@ -82,8 +96,14 @@ export class PostsController {
     @Param('id') postId: string,
     @Req() req: any,
   ) {
+    this.validateObjectId(postId);
     const userId = this.extractUserId(req);
-    return this.postsService.getPostById(postId, userId);
+
+    const post = await this.postsService.getPostById(postId, userId);
+    if (!post) {
+      throw new NotFoundException('Post not found or has been removed.');
+    }
+    return post;
   }
 
   // 🔒 PROTECTED: Create post
@@ -100,40 +120,48 @@ export class PostsController {
 
   // 🔒 PROTECTED: Like post
   @Post(':id/like')
+  @HttpCode(HttpStatus.OK)
   async toggleLikePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
+    this.validateObjectId(postId);
     const userId = this.requireUserId(req, 'Please login to like posts.');
     return this.postsService.toggleLikePost(postId, userId);
   }
 
   // 🔒 PROTECTED: Save post
   @Post(':id/save')
+  @HttpCode(HttpStatus.OK)
   async toggleSavePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
+    this.validateObjectId(postId);
     const userId = this.requireUserId(req, 'Please login to save posts.');
     return this.postsService.toggleSavePost(postId, userId);
   }
 
   // 🔒 PROTECTED: Save event to calendar
   @Post(':id/save-event')
+  @HttpCode(HttpStatus.OK)
   async toggleSaveEvent(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
+    this.validateObjectId(postId);
     const userId = this.requireUserId(req, 'Please login to save events.');
     return this.postsService.toggleSaveEvent(postId, userId);
   }
 
   // 🌐 PUBLIC: Share tracking
   @Post(':id/share')
+  @HttpCode(HttpStatus.OK)
   async trackSharePost(
     @Param('id') postId: string,
     @Req() req: any,
   ) {
+    this.validateObjectId(postId);
     const userId = this.extractUserId(req);
     return this.postsService.trackSharePost(postId, userId);
   }
