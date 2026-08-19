@@ -33,11 +33,52 @@ export class PostsService {
     return new Types.ObjectId(userId);
   }
 
+  // 🛠️ Helper: Safe post formatter with complete null checks & date resolution
+  private formatPost(post: any, userId?: string, userSavedPosts: any[] = []) {
+    if (!post) return null;
+
+    const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
+    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
+
+    // 🟢 RESOLVE IMAGES
+    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
+      ? post.images 
+      : (post.imageurl ? (Array.isArray(post.imageurl) ? post.imageurl : [post.imageurl]) : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+
+    // 🟢 RESOLVE AUTHOR DETAILS (Handles populated objects or raw fields)
+    const authorRef = typeof post.userId === 'object' ? post.userId : (typeof post.author === 'object' ? post.author : {});
+    const authorName = post.username || authorRef?.name || authorRef?.username || post.author?.name || 'Anonymous User';
+    const authorPicture = post.picture || post.avatar || authorRef?.picture || authorRef?.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback';
+    const authorCollege = authorRef?.college || post.college || 'CollegenZ Member';
+
+    // 🟢 RESOLVE CREATION DATE (Prevents "Invalid Date" by extracting from _id as ultimate fallback)
+    let createdAtDate = post.createdAt || post.created_at || post.timestamp;
+    if (!createdAtDate && post._id && Types.ObjectId.isValid(post._id)) {
+      createdAtDate = new Types.ObjectId(post._id).getTimestamp();
+    }
+
+    return {
+      ...post,
+      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
+      images: resolvedImages,
+      createdAt: createdAtDate ? new Date(createdAtDate).toISOString() : new Date().toISOString(),
+      author: {
+        name: authorName,
+        picture: authorPicture,
+        college: authorCollege,
+      },
+      likesCount: Math.max(0, typeof post.likes === 'number' ? post.likes : likesArray.length),
+      savesCount: Math.max(0, typeof post.saves === 'number' ? post.saves : savesArray.length),
+      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id?.toString() === userId.toString()) : false,
+      isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id?.toString() === userId.toString()) || 
+                            userSavedPosts.some((id: any) => id?.toString() === post._id?.toString())) : false,
+    };
+  }
+
   // 🔒 AUTH REQUIRED: Create Post
   async createPost(body: any, files: any[], userId: string) {
     const userObjectId = this.requireAuthUser(userId);
     
-    // Accept either camelCase or snake_case key from frontend forms
     const postType = body.postType || body.post_type;
     const contentData = body.data || body.content || body.caption;
 
@@ -68,9 +109,10 @@ export class PostsService {
       ...body,
       postType: postType,
       data: contentData,
+      content: contentData,
       userId: currentUser._id,
-      username: currentUser.username,
-      picture: currentUser.picture,
+      username: currentUser.username || currentUser.name,
+      picture: currentUser.picture || currentUser.avatar,
       imageurl: imageurls,
       images: imageurls,
       status: "APPROVED",
@@ -91,39 +133,11 @@ export class PostsService {
     return { success: true, message: "Post created successfully" };
   }
 
-  // 🛠️ Helper: Safe post formatter with complete null checks
-  private formatPost(post: any, userId?: string, userSavedPosts: any[] = []) {
-    if (!post) return null;
-
-    const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
-    const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
-
-    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
-      ? post.images 
-      : (post.imageurl ? (Array.isArray(post.imageurl) ? post.imageurl : [post.imageurl]) : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
-
-    return {
-      ...post,
-      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
-      images: resolvedImages,
-      author: {
-        name: post.username || post.author?.name || post.author?.username || 'Anonymous User',
-        picture: post.picture || post.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
-      },
-      likesCount: typeof post.likes === 'number' ? post.likes : likesArray.length,
-      savesCount: typeof post.saves === 'number' ? post.saves : savesArray.length,
-      isLikedByCurrentUser: userId ? likesArray.some((id: any) => id?.toString() === userId.toString()) : false,
-      isSavedByCurrentUser: userId ? (savesArray.some((id: any) => id?.toString() === userId.toString()) || 
-                            userSavedPosts.some((id: any) => id?.toString() === post._id?.toString())) : false,
-    };
-  }
-
   // 🌐 PUBLIC ACCESS: View Feed with type filtering
   async getFeed(type: string, userId: string | undefined, pageNum: number): Promise<any[]> {
     const limit = 10;
     const skip = (pageNum - 1) * limit;
 
-    // Apply query filters according to requested feed type
     const queryFilter: any = {};
     if (type && type !== 'recent' && type !== 'all') {
       queryFilter.postType = type;
@@ -183,10 +197,6 @@ export class PostsService {
             ...formatted,
             content: feat.data || feat.caption || feat.content || '', 
             images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : formatted.images), 
-            author: {
-              name: feat.username || feat.author?.name || 'Anonymous User',
-              picture: feat.picture || feat.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback'
-            }
           };
         })
         .filter((item: any) => item !== null);
@@ -308,7 +318,7 @@ export class PostsService {
     }
   }
 
-  // 🔒 AUTH REQUIRED: Get Saved Events (safely filters out null populated entries)
+  // 🔒 AUTH REQUIRED: Get Saved Events
   async getSavedEvents(userId: string): Promise<any[]> {
     const userObjectId = this.requireAuthUser(userId);
 
@@ -363,4 +373,4 @@ export class PostsService {
 
     return this.formatPost(post, userId, userSavedPosts);
   }
-}
+  }
