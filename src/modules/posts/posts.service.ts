@@ -33,25 +33,49 @@ export class PostsService {
     return new Types.ObjectId(userId);
   }
 
-  // 🛠️ Helper: Safe post formatter with complete null checks & date resolution
+  // 🛠️ Helper: Robust post formatter with field unpacking & user population support
   private formatPost(post: any, userId?: string, userSavedPosts: any[] = []) {
     if (!post) return null;
 
     const likesArray = Array.isArray(post.likedBy) ? post.likedBy : [];
     const savesArray = Array.isArray(post.savedBy) ? post.savedBy : [];
 
-    // 🟢 RESOLVE IMAGES
-    const resolvedImages = (Array.isArray(post.images) && post.images.length > 0) 
-      ? post.images 
-      : (post.imageurl ? (Array.isArray(post.imageurl) ? post.imageurl : [post.imageurl]) : (post.imageUrl ? [post.imageUrl] : (post.image ? [post.image] : [])));
+    // 1. Resolve Author from populated userId, author object, or root fields
+    const userObj = (post.userId && typeof post.userId === 'object') ? post.userId : 
+                    ((post.author && typeof post.author === 'object') ? post.author : {});
+                     
+    const authorName = post.username || userObj.username || userObj.name || userObj.fullName || post.author?.name || 'CollegenZ User';
+    const authorPicture = post.picture || post.avatar || userObj.picture || userObj.avatar || userObj.profilePicture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback';
+    const authorCollege = userObj.college || post.college || 'CollegenZ Member';
 
-    // 🟢 RESOLVE AUTHOR DETAILS (Handles populated objects or raw fields)
-    const authorRef = typeof post.userId === 'object' ? post.userId : (typeof post.author === 'object' ? post.author : {});
-    const authorName = post.username || authorRef?.name || authorRef?.username || post.author?.name || 'Anonymous User';
-    const authorPicture = post.picture || post.avatar || authorRef?.picture || authorRef?.avatar || post.author?.picture || 'https://api.dicebear.com/7.x/avataaars/svg?seed=fallback';
-    const authorCollege = authorRef?.college || post.college || 'CollegenZ Member';
+    // 2. Resolve Content across all common Mongo schema formats (string or nested object)
+    let extractedContent = post.content || post.caption || post.text || post.description || post.title || post.body || '';
+    if (!extractedContent && post.data) {
+      if (typeof post.data === 'string') {
+        extractedContent = post.data;
+      } else if (typeof post.data === 'object') {
+        extractedContent = post.data.text || post.data.content || post.data.caption || post.data.description || post.data.title || post.data.body || '';
+      }
+    }
 
-    // 🟢 RESOLVE CREATION DATE (Prevents "Invalid Date" by extracting from _id as ultimate fallback)
+    // 3. Resolve Media URLs
+    let resolvedImages: string[] = [];
+    if (Array.isArray(post.images) && post.images.length > 0) {
+      resolvedImages = post.images;
+    } else if (Array.isArray(post.imageurl) && post.imageurl.length > 0) {
+      resolvedImages = post.imageurl;
+    } else if (typeof post.imageurl === 'string' && post.imageurl) {
+      resolvedImages = [post.imageurl];
+    } else if (typeof post.imageUrl === 'string' && post.imageUrl) {
+      resolvedImages = [post.imageUrl];
+    } else if (typeof post.image === 'string' && post.image) {
+      resolvedImages = [post.image];
+    } else if (post.data && typeof post.data === 'object') {
+      if (Array.isArray(post.data.images)) resolvedImages = post.data.images;
+      else if (post.data.imageUrl) resolvedImages = [post.data.imageUrl];
+    }
+
+    // 4. Resolve Creation Date (fallback to ObjectId creation timestamp)
     let createdAtDate = post.createdAt || post.created_at || post.timestamp;
     if (!createdAtDate && post._id && Types.ObjectId.isValid(post._id)) {
       createdAtDate = new Types.ObjectId(post._id).getTimestamp();
@@ -59,7 +83,7 @@ export class PostsService {
 
     return {
       ...post,
-      content: post.caption || post.content || post.text || (post.data ? String(post.data) : ''),
+      content: extractedContent,
       images: resolvedImages,
       createdAt: createdAtDate ? new Date(createdAtDate).toISOString() : new Date().toISOString(),
       author: {
@@ -146,6 +170,7 @@ export class PostsService {
     try {
       const rawPosts = await this.postModel
         .find(queryFilter)
+        .populate('userId', 'name username picture avatar college profilePicture')
         .sort({ _id: -1 })
         .skip(skip)
         .limit(limit)
@@ -190,15 +215,7 @@ export class PostsService {
       }
 
       return rawFeatured
-        .map((feat: any) => {
-          const formatted = this.formatPost(feat, userId, userSavedPosts);
-          if (!formatted) return null;
-          return {
-            ...formatted,
-            content: feat.data || feat.caption || feat.content || '', 
-            images: Array.isArray(feat.imageurl) && feat.imageurl.length > 0 ? feat.imageurl : (feat.imageurl ? [feat.imageurl] : formatted.images), 
-          };
-        })
+        .map((feat: any) => this.formatPost(feat, userId, userSavedPosts))
         .filter((item: any) => item !== null);
     } catch (error) {
       console.error('🚨 Failed to fetch featured posts:', error);
@@ -360,7 +377,11 @@ export class PostsService {
     if (!postId || !Types.ObjectId.isValid(postId)) {
       throw new BadRequestException('Invalid post ID');
     }
-    const post: any = await this.postModel.findById(postId).lean();
+    const post: any = await this.postModel
+      .findById(postId)
+      .populate('userId', 'name username picture avatar college profilePicture')
+      .lean();
+
     if (!post) throw new NotFoundException('Post not found');
 
     let userSavedPosts: any[] = [];
@@ -373,4 +394,4 @@ export class PostsService {
 
     return this.formatPost(post, userId, userSavedPosts);
   }
-  }
+}
