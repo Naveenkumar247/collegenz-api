@@ -20,7 +20,7 @@ export class FeaturedPostsController {
   @UseInterceptors(FilesInterceptor('images'))
   async create(
     @Body() createDto: CreateFeaturedPostDto,
-    @UploadedFiles() files: Express.Multer.File[],
+    @UploadedFiles() files?: any[],
   ) {
     return this.featuredPostsService.create(createDto, files);
   }
