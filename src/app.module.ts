@@ -4,13 +4,12 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { FeaturedPostsModule } from './modules/featured-posts/featured-posts.module';
-
 
 // Core Feature Module Imports
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { PostsModule } from './modules/posts/posts.module';
+import { FeaturedPostsModule } from './modules/featured-posts/featured-posts.module';
 
 @Controller('')
 class AppController {
@@ -19,7 +18,7 @@ class AppController {
     return {
       status: 'online',
       message: 'Welcome to the CollegenZ Enterprise API Portal',
-      version: '1.0.0'
+      version: '1.0.0',
     };
   }
 }
@@ -31,7 +30,7 @@ class AppController {
       isGlobal: true,
     }),
 
-    // 2. Global Shared JWT Configuration (Ensures Guards can verify tokens anywhere)
+    // 2. Global Shared JWT Configuration
     JwtModule.registerAsync({
       global: true,
       imports: [ConfigModule],
@@ -48,21 +47,22 @@ class AppController {
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         uri: configService.get<string>('MONGO_URI'),
-        // 🟢 Cleaned up: Let the direct URI string handle the namespace routing entirely
       }),
     }),
-    
 
     // 4. Global Security Rate Limiting API Safeguard
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
 
     // 5. Registered Active Business Domain Modules
     UsersModule,
     AuthModule,
     PostsModule,
+    FeaturedPostsModule, // 👈 ADDED HERE
   ],
   controllers: [AppController],
   providers: [
