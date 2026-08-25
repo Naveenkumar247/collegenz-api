@@ -12,6 +12,5 @@ import { FeaturedPost, FeaturedPostSchema } from './schema/featured-post.schema'
   ],
   controllers: [FeaturedPostsController],
   providers: [FeaturedPostsService],
-  exports: [FeaturedPostsService],
 })
 export class FeaturedPostsModule {}
