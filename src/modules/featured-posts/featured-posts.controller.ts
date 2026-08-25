@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Delete,
+  Body,
+  Param,
+  UseInterceptors,
+  UploadedFiles,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { FeaturedPostsService } from './featured-posts.service';
 import { CreateFeaturedPostDto } from './dto/create-featured-post.dto';
 
@@ -7,8 +17,12 @@ export class FeaturedPostsController {
   constructor(private readonly featuredPostsService: FeaturedPostsService) {}
 
   @Post()
-  async create(@Body() createDto: CreateFeaturedPostDto) {
-    return this.featuredPostsService.create(createDto);
+  @UseInterceptors(FilesInterceptor('images'))
+  async create(
+    @Body() createDto: CreateFeaturedPostDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.featuredPostsService.create(createDto, files);
   }
 
   @Get()
