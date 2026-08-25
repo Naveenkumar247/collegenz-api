@@ -15,7 +15,7 @@ async function bootstrap() {
     }),
   );
 
-  // 2. Global CORS Configuration (🟢 FIXED: Prevents CORS breakdown with credentials)
+  // 2. Global CORS Configuration
   app.enableCors({
     origin: (origin, callback) => {
       const envOrigins = process.env.ALLOWED_ORIGINS
@@ -30,8 +30,6 @@ async function bootstrap() {
         ...envOrigins,
       ];
 
-      // Allow requests with no origin (mobile apps, server-to-server)
-      // or allowed domains / Vercel previews (*.vercel.app)
       if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
         callback(null, true);
       } else {
@@ -46,30 +44,25 @@ async function bootstrap() {
   // 3. Performance Optimization (Gzip compression)
   app.use(compression());
 
-  // 4. API Versioning Control (/api/v1/...)
+  // 4. API Versioning Control -> Creates /api/v1/...
   app.setGlobalPrefix('api');
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
   });
 
-  // 5. Request Body Validation (🟢 FIXED: Set whitelist to false if using raw @Body() body: any)
+  // 5. Request Body Validation
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: false, // Prevents NestJS from wiping @Body() payloads when DTO classes are not used
+      whitelist: false,
       transform: true,
     }),
   );
-  async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix('api/v1');
-  await app.listen(3000);
-}
-
 
   const port = process.env.PORT || 10000;
   
   await app.listen(port, '0.0.0.0');
   console.log(`🚀 CollegenZ API core running on: http://0.0.0.0:${port}/api/v1`);
 }
+
 bootstrap();
