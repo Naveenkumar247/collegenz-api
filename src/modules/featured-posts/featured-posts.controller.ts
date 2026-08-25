@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Delete, Param } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param } from '@nestjs/common';
 import { FeaturedPostsService } from './featured-posts.service';
 import { CreateFeaturedPostDto } from './dto/create-featured-post.dto';
 
@@ -7,17 +7,17 @@ export class FeaturedPostsController {
   constructor(private readonly featuredPostsService: FeaturedPostsService) {}
 
   @Post()
-  create(@Body() createDto: CreateFeaturedPostDto) {
+  async create(@Body() createDto: CreateFeaturedPostDto) {
     return this.featuredPostsService.create(createDto);
   }
 
   @Get()
-  findAll() {
+  async findAll() {
     return this.featuredPostsService.findAll();
   }
 
-  @Delete(':postId')
-  remove(@Param('postId') postId: string) {
-    return this.featuredPostsService.remove(postId);
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    return this.featuredPostsService.remove(id);
   }
 }
