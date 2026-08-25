@@ -4,6 +4,8 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { FeaturedPostsModule } from './modules/featured-posts/featured-posts.module';
+
 
 // Core Feature Module Imports
 import { UsersModule } from './modules/users/users.module';
