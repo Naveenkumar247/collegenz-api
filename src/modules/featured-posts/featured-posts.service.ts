@@ -11,9 +11,8 @@ export class FeaturedPostsService {
     private featuredPostModel: Model<FeaturedPost>,
   ) {}
 
-  async create(createDto: CreateFeaturedPostDto, files?: Express.Multer.File[]) {
-    // If uploading direct images for featured posts:
-    const imageUrls = files?.map((file: any) => file.path || `/uploads/${file.filename}`) || [];
+  async create(createDto: CreateFeaturedPostDto, files?: any[]) {
+    const imageUrls = files?.map((file) => file.path || `/uploads/${file.filename}`) || [];
 
     const createdPost = new this.featuredPostModel({
       ...createDto,
@@ -30,17 +29,17 @@ export class FeaturedPostsService {
       .find({
         $or: [
           { expiresAt: null },
-          { expiresAt: { $gt: now } } // Exclude expired featured posts
+          { expiresAt: { $gt: now } },
         ],
       })
       .populate({
         path: 'postId',
         populate: {
           path: 'author',
-          select: 'name avatar username', // Populates nested author details from original post
+          select: 'name avatar username',
         },
       })
-      .sort({ priority: -1, createdAt: -1 }) // Sort by priority high -> low, then newest
+      .sort({ priority: -1, createdAt: -1 })
       .exec();
   }
 
