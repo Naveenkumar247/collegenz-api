@@ -12,7 +12,6 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { FeaturedPostsService } from './featured-posts.service';
 import { CreateFeaturedPostDto } from './dto/create-featured-post.dto';
 
-// Match exact route string fetched by frontend: 'featuredposts'
 @Controller('featuredposts')
 export class FeaturedPostsController {
   constructor(private readonly featuredPostsService: FeaturedPostsService) {}
@@ -21,7 +20,7 @@ export class FeaturedPostsController {
   @UseInterceptors(FilesInterceptor('images'))
   async create(
     @Body() createDto: CreateFeaturedPostDto,
-    @UploadedFiles() files?: Express.Multer.File[],
+    @UploadedFiles() files?: any[],
   ) {
     return this.featuredPostsService.create(createDto, files);
   }
