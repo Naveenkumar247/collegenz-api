@@ -15,4 +15,4 @@ export class FeaturedPost {
   expiresAt: Date;
 }
 
-export const FeaturedPostSchema = SchemaFactory.createForClass(Featuredposts);
+export const FeaturedPostSchema = SchemaFactory.createForClass(FeaturedPosts);
