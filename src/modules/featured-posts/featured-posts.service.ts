@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { FeaturedPost } from './schema/featured-post.schema';
@@ -8,15 +8,29 @@ import { CreateFeaturedPostDto } from './dto/create-featured-post.dto';
 export class FeaturedPostsService {
   constructor(
     @InjectModel(FeaturedPost.name)
-    private featuredPostModel: Model<FeaturedPost>,
+    private readonly featuredPostModel: Model<FeaturedPost>,
   ) {}
 
-  async create(createDto: CreateFeaturedPostDto, files?: any[]) {
-    const imageUrls = files?.map((file) => file.path || `/uploads/${file.filename}`) || [];
+  async create(
+    createDto: CreateFeaturedPostDto,
+    files?: any[],
+  ) {
+    const imageUrls =
+      files?.map(
+        (file) =>
+          file.path ||
+          file.secure_url ||
+          `/uploads/${file.filename}`,
+      ) || [];
 
     const createdPost = new this.featuredPostModel({
-      ...createDto,
-      ...(imageUrls.length > 0 && { images: imageUrls }),
+      postId: createDto.postId,
+      description: createDto.description || '',
+      priority: createDto.priority ?? 0,
+      expiresAt: createDto.expiresAt
+        ? new Date(createDto.expiresAt)
+        : null,
+      images: imageUrls,
     });
 
     return createdPost.save();
@@ -29,21 +43,30 @@ export class FeaturedPostsService {
       .find({
         $or: [
           { expiresAt: null },
+          { expiresAt: { $exists: false } },
           { expiresAt: { $gt: now } },
         ],
       })
-      .populate({
-        path: 'postId',
-        populate: {
-          path: 'author',
-          select: 'name avatar username',
-        },
+      .populate('postId')
+      .sort({
+        priority: -1,
+        createdAt: -1,
       })
-      .sort({ priority: -1, createdAt: -1 })
+      .lean()
       .exec();
   }
 
   async remove(id: string) {
-    return this.featuredPostModel.findByIdAndDelete(id).exec();
+    const deleted =
+      await this.featuredPostModel.findByIdAndDelete(id).exec();
+
+    if (!deleted) {
+      throw new NotFoundException('Featured post not found');
+    }
+
+    return {
+      success: true,
+      message: 'Featured post removed successfully',
+    };
   }
 }
