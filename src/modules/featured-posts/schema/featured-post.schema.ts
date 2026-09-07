@@ -3,13 +3,24 @@ import { Document, Types } from 'mongoose';
 
 export type FeaturedPostDocument = FeaturedPost & Document;
 
-@Schema({ 
+@Schema({
   timestamps: true,
-  collection: 'featuredposts' // Explicitly targets your MongoDB collection name
+  collection: 'featuredposts',
 })
 export class FeaturedPost {
-  @Prop({ type: Types.ObjectId, ref: 'Post', required: true, unique: true })
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Post',
+    required: true,
+    unique: true,
+  })
   postId: Types.ObjectId;
+
+  @Prop({ type: [String], default: [] })
+  images: string[];
+
+  @Prop({ type: String, default: '' })
+  description: string;
 
   @Prop({ type: Number, default: 0 })
   priority: number;
@@ -18,5 +29,5 @@ export class FeaturedPost {
   expiresAt: Date;
 }
 
-// Fixed class reference name here:
-export const FeaturedPostSchema = SchemaFactory.createForClass(FeaturedPost);
+export const FeaturedPostSchema =
+  SchemaFactory.createForClass(FeaturedPost);
