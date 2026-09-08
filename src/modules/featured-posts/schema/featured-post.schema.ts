@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document } from 'mongoose';
 
 export type FeaturedPostDocument = FeaturedPost & Document;
 
@@ -9,23 +9,35 @@ export type FeaturedPostDocument = FeaturedPost & Document;
 })
 export class FeaturedPost {
   @Prop({
-    type: Types.ObjectId,
-    ref: 'Post',
+    type: String,
     required: true,
-    unique: true,
+    trim: true,
   })
-  postId: Types.ObjectId;
+  title: string;
 
-  @Prop({ type: [String], default: [] })
-  images: string[];
-
-  @Prop({ type: String, default: '' })
+  @Prop({
+    type: String,
+    default: '',
+    trim: true,
+  })
   description: string;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({
+    type: [String],
+    default: [],
+  })
+  images: string[];
+
+  @Prop({
+    type: Number,
+    default: 0,
+  })
   priority: number;
 
-  @Prop({ type: Date, default: null })
+  @Prop({
+    type: Date,
+    default: null,
+  })
   expiresAt: Date;
 }
 
