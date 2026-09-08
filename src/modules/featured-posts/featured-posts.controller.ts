@@ -14,15 +14,20 @@ import { CreateFeaturedPostDto } from './dto/create-featured-post.dto';
 
 @Controller('featuredposts')
 export class FeaturedPostsController {
-  constructor(private readonly featuredPostsService: FeaturedPostsService) {}
+  constructor(
+    private readonly featuredPostsService: FeaturedPostsService,
+  ) {}
 
   @Post()
-  @UseInterceptors(FilesInterceptor('images'))
+  @UseInterceptors(FilesInterceptor('images', 10))
   async create(
     @Body() createDto: CreateFeaturedPostDto,
     @UploadedFiles() files?: any[],
   ) {
-    return this.featuredPostsService.create(createDto, files);
+    return this.featuredPostsService.create(
+      createDto,
+      files,
+    );
   }
 
   @Get()
