@@ -1,8 +1,18 @@
-import { Controller, Get, Post, Body, UseGuards, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  UseGuards,
+  Req,
+  Res,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 @Controller('auth')
 export class AuthController {
@@ -11,33 +21,83 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  // 1. TRADITIONAL EMAIL/PASSWORD LOGIN
+  // ============================================
+  // EMAIL / PASSWORD LOGIN
+  // ============================================
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() body: any) {
-    // Calls your auth.service to validate credentials and issue JWT
-    return this.authService.login(body.email, body.password);
+  async login(@Body() body: any, @Req() req: Request) {
+    return this.authService.login(body, req);
   }
 
-  // 2. INITIATE GOOGLE OAUTH
+  // ============================================
+  // START GOOGLE OAUTH
+  // ============================================
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  async googleAuth(@Req() req) {}
+  async googleAuth(@Req() req: Request) {
+    // Passport handles the redirect to Google.
+    return;
+  }
 
-  // 3. GOOGLE OAUTH CALLBACK
+  // ============================================
+  // GOOGLE OAUTH CALLBACK
+  // ============================================
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleAuthRedirect(@Req() req, @Res() res: Response) {
-    const result = await this.authService.validateGoogleUser(req.user);
-    
-    // Clean and enforce absolute FRONTEND_URL to prevent path stacking
-    let frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'https://collegenz.in';
-    frontendUrl = frontendUrl.replace(/^["']|["']$/g, '').trim().replace(/\/$/, '');
+  async googleAuthRedirect(
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    try {
+      if (!req.user) {
+        return res.redirect(
+          this.getFrontendUrl('/login?error=google_auth_failed'),
+        );
+      }
 
-    if (!frontendUrl.startsWith('http://') && !frontendUrl.startsWith('https://')) {
+      const result = await this.authService.validateGoogleUser(req.user);
+
+      if (!result?.token) {
+        return res.redirect(
+          this.getFrontendUrl('/login?error=token_generation_failed'),
+        );
+      }
+
+      const frontendUrl = this.getFrontendUrl('/login');
+
+      return res.redirect(
+        `${frontendUrl}?token=${encodeURIComponent(result.token)}`,
+      );
+    } catch (error) {
+      console.error('❌ Google OAuth callback error:', error);
+
+      return res.redirect(
+        this.getFrontendUrl('/login?error=google_login_failed'),
+      );
+    }
+  }
+
+  // ============================================
+  // FRONTEND URL HELPER
+  // ============================================
+  private getFrontendUrl(path: string): string {
+    let frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') ||
+      'https://collegenz.in';
+
+    frontendUrl = frontendUrl
+      .replace(/^["']|["']$/g, '')
+      .trim()
+      .replace(/\/+$/, '');
+
+    if (
+      !frontendUrl.startsWith('http://') &&
+      !frontendUrl.startsWith('https://')
+    ) {
       frontendUrl = `https://${frontendUrl}`;
     }
 
-    return res.redirect(`${frontendUrl}/login?token=${result.token}`);
+    return `${frontendUrl}${path.startsWith('/') ? path : `/${path}`}`;
   }
 }
